@@ -806,6 +806,267 @@ MACRO_CONFIG_INT(GfxDriverIsBlocked, gfx_driver_is_blocked, 0, 0, 1, CFGFLAG_SAV
 
 MACRO_CONFIG_INT(ClVideoRecorderFPS, cl_video_recorder_fps, 60, 1, 1000, CFGFLAG_SAVE | CFGFLAG_CLIENT, "At which FPS the videorecorder should record demos.")
 
+
+	// =========================================================
+	// Kinetix client — ported from the Kinetix reference client.
+	// =========================================================
+// Kinetix ClickGUI overlay (bind tab "toggle cl_clickgui 1 0" to toggle).
+// Not persisted (no CFGFLAG_SAVE) so it defaults to closed on every launch.
+MACRO_CONFIG_INT(ClClickGui, cl_clickgui, 0, 0, 1, CFGFLAG_CLIENT, "Show/hide the Kinetix ClickGUI overlay")
+MACRO_CONFIG_INT(KxDummyHammerKeepInputs, kx_dummy_hammer_keep_inputs, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Preserve dummy movement inputs (direction/jump/hook) during hammerfly; aim is still overridden for hammer direction")
+MACRO_CONFIG_INT(KxDummyHammerCustomLatency, kx_dummy_hammer_custom_latency, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Use custom hammer latency instead of default 500ms")
+MACRO_CONFIG_INT(KxDummyHammerLatencyMs, kx_dummy_hammer_latency_ms, 500, 50, 2000, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Hammer latency in milliseconds (only used when kx_dummy_hammer_custom_latency is on)")
+MACRO_CONFIG_INT(KxDummyHammerAuto, kx_dummy_hammer_auto, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Auto-hammer: dummy hammers the active player every tick when in hammer radius (overrides custom latency)")
+MACRO_CONFIG_INT(KxDummyHammerAutoMaxDist, kx_dummy_hammer_auto_max_dist, 50, 5, 63, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Auto Fly: max distance (in world units) between dummy and active player for hammer to fire. Real DDNet hammer max reach = 63 center-to-center (ProjStartPos offset 21 + FindEntities radius 14 + target ProximityRadius 28). Default 50 = small safety margin. Max 63 = exact real reach.")
+MACRO_CONFIG_INT(KxDummyHammerAutoPredict, kx_dummy_hammer_auto_predict, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Auto Fly: predict next-tick position of active player before range check. When on, hammer fires if the player WILL be in range next tick (even if currently slightly out of range). Catches fast-moving players.")
+MACRO_CONFIG_INT(KxFlyRide, kx_fly_ride, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Fly Ride: pilot (active dummy) hooks/hammers nearest dummy, WASD moves anchor point")
+MACRO_CONFIG_INT(KxDummyCopyMovesFilter, kx_dummy_copy_moves_filter, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "When on with copy_moves, only copy selected inputs (jump/direction/hook/aim/fire) instead of all")
+MACRO_CONFIG_INT(KxDummyCopyMovesFilterJump, kx_dummy_copy_moves_filter_jump, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Copy Moves Filter: copy jump")
+MACRO_CONFIG_INT(KxDummyCopyMovesFilterDirection, kx_dummy_copy_moves_filter_direction, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Copy Moves Filter: copy direction")
+MACRO_CONFIG_INT(KxDummyCopyMovesFilterHook, kx_dummy_copy_moves_filter_hook, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Copy Moves Filter: copy hook")
+MACRO_CONFIG_INT(KxDummyCopyMovesFilterAim, kx_dummy_copy_moves_filter_aim, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Copy Moves Filter: copy aim (target X/Y)")
+MACRO_CONFIG_INT(KxDummyCopyMovesFilterFire, kx_dummy_copy_moves_filter_fire, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Copy Moves Filter: copy fire")
+MACRO_CONFIG_INT(KxDummyCopyMovesFilterWeapon, kx_dummy_copy_moves_filter_weapon, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Copy Moves Filter: copy weapon (wanted/next/prev weapon)")
+MACRO_CONFIG_INT(KxCopyMovesLatency, kx_copy_moves_latency, 0, 0, 5000, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Copy Moves Latency: delay (ms) per dummy index before inactive dummies replay active player's input. N = latency_ms * dummy_index. Only applies when kx_copy_moves_latency_enabled is on.")
+MACRO_CONFIG_INT(KxCopyMovesLatencyEnabled, kx_copy_moves_latency_enabled, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Copy Moves Latency master toggle. When off, no latency is applied (live copy). When on, inactive dummies replay active player's input from N ms ago (N = kx_copy_moves_latency * dummy_index).")
+MACRO_CONFIG_INT(KxDummyCopyMirrorDir, kx_dummy_copy_mirror_dir, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Mirror direction of inactive dummies by XOR when copy moves is on")
+MACRO_CONFIG_INT(KxDummyCopyAimMode, kx_dummy_copy_aim_mode, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Aim mode for copy moves: 0 = Smart (world coords), 1 = Mirror")
+MACRO_CONFIG_INT(KxDummyCopyMirrorAimX, kx_dummy_copy_mirror_aim_x, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Mirror aim X of inactive dummies when copy moves is on (mirror mode)")
+MACRO_CONFIG_INT(KxDummyCopyMirrorAimY, kx_dummy_copy_mirror_aim_y, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Mirror aim Y of inactive dummies when copy moves is on (mirror mode)")
+MACRO_CONFIG_INT(KxDummyCopySmartAim, kx_dummy_copy_smart_aim, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Smart aim: inactive dummies aim at the same world point as the player (smart mode)")
+MACRO_CONFIG_INT(KxVersionSpoof, kx_version_spoof, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Spoof DDNet client version number")
+MACRO_CONFIG_INT(KxVersionSpoofId, kx_version_spoof_id, 20000, 10000, 21000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "DDNet version number to spoof (10000-21000)")
+// Client identity spoof (sent in NETMSG_CLIENTVER as DDNetVersionStr)
+MACRO_CONFIG_INT(KxSpoofClientStr, kx_spoof_client_str, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Spoof client name/version string sent to server")
+MACRO_CONFIG_INT(KxSpoofClientPreset, kx_spoof_client_preset, 0, 0, 3, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Client preset: 0=DDNet, 1=TClient, 2=BestClient, 3=Custom")
+MACRO_CONFIG_STR(KxSpoofClientName, kx_spoof_client_name, 24, "TClient", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Client name to spoof (replaces GAME_NAME in DDNetVersionStr)")
+MACRO_CONFIG_STR(KxSpoofClientVersion, kx_spoof_client_version, 32, "10.8.7", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Client version string to spoof (replaces GAME_RELEASE_VERSION). v1.56.174: bumped 16->32 to fit '2.1.1 stable-beta' (17 chars + null = 18).")
+MACRO_CONFIG_INT(KxSpoofGitHashEnabled, kx_spoof_git_hash_enabled, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable custom git hash spoof")
+MACRO_CONFIG_STR(KxSpoofGitHash, kx_spoof_git_hash, 40, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Git hash to spoof (empty = use real, 'none' = hide). v1.56.174: bumped 24->40 to fit 32-char BestClient hash (--short=32 format).")
+MACRO_CONFIG_INT(KxSpoofBestClientExtraNetmsgs, kx_spoof_bestclient_extra_netmsgs, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Send BestClient extra identification NETMSGs on connect (BestClient preset only)")
+MACRO_CONFIG_INT(KxDummyAim, kx_dummy_aim, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_INSENSITIVE, "Whether dummy is aiming (requires cl_dummy_control 1)")
+MACRO_CONFIG_INT(KxDummyDirection, kx_dummy_direction, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_INSENSITIVE, "Whether dummy is moving (requires cl_dummy_control 1)")
+// bot control
+MACRO_CONFIG_INT(KxBotActionDuration, kx_bot_action_duration, 500, 100, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Duration in ms for bot input actions (kx_input UI buttons)")
+// Max value 7 = MAX_DUMMIES-1 — update when MAX_DUMMIES changes
+MACRO_CONFIG_INT(KxBotTargetDummy, kx_bot_target_dummy, 1, 0, 7, CFGFLAG_CLIENT | CFGFLAG_INSENSITIVE, "Target dummy for bot control UI (0=main, 1-7=dummies)")
+// trajectory prediction
+MACRO_CONFIG_INT(KxShowTrajectory, kx_show_trajectory, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show trajectory prediction for active player")
+MACRO_CONFIG_INT(KxTrajectoryTicks, kx_trajectory_ticks, 10, 1, 50, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Number of ticks to predict trajectory (1-50)")
+MACRO_CONFIG_INT(KxLineRenderingSize, kx_line_rendering_size, 1, 0, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Trajectory line width in pixels (0=thin default)")
+MACRO_CONFIG_COL(KxLineRenderingColor, kx_line_rendering_color, 65471, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Trajectory line color")
+MACRO_CONFIG_INT(KxLineRenderingAlpha, kx_line_rendering_alpha, 80, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Trajectory line opacity (0-100)")
+MACRO_CONFIG_INT(KxLineRenderingLayer, kx_line_rendering_layer, 0, 0, 10, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Line render layer: 0=behind foreground blocks, 1+=on top of blocks (deferred overlay pass)")
+// v1.56.108: Per-component line rendering settings.
+// Component indices: 0=AimBot 1=TriggerBot 2=Trajectory 3=LaserUnfreeze 4=Pathfinder 5=ESP
+// KxLineRenderingLayer stays global (deferred-overlay infrastructure is shared).
+MACRO_CONFIG_INT(KxLineComponent, kx_line_component, 0, 0, 5, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Selected component for Line rendering panel (0=AimBot 1=TriggerBot 2=Trajectory 3=LaserUnfreeze 4=Pathfinder 5=ESP)")
+MACRO_CONFIG_INT(KxLineAimBotSize, kx_line_aimbot_size, 6, 0, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "AimBot line width")
+MACRO_CONFIG_COL(KxLineAimBotColor, kx_line_aimbot_color, 4294967295, CFGFLAG_CLIENT | CFGFLAG_SAVE, "AimBot line color")
+MACRO_CONFIG_INT(KxLineAimBotAlpha, kx_line_aimbot_alpha, 80, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "AimBot line opacity")
+MACRO_CONFIG_INT(KxLineTriggerBotSize, kx_line_triggerbot_size, 6, 0, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "TriggerBot line width")
+MACRO_CONFIG_COL(KxLineTriggerBotColor, kx_line_triggerbot_color, 4294967295, CFGFLAG_CLIENT | CFGFLAG_SAVE, "TriggerBot line color")
+MACRO_CONFIG_INT(KxLineTriggerBotAlpha, kx_line_triggerbot_alpha, 80, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "TriggerBot line opacity")
+MACRO_CONFIG_INT(KxLineTrajectorySize, kx_line_trajectory_size, 6, 0, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Trajectory line width")
+MACRO_CONFIG_COL(KxLineTrajectoryColor, kx_line_trajectory_color, 4294967295, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Trajectory line color")
+MACRO_CONFIG_INT(KxLineTrajectoryAlpha, kx_line_trajectory_alpha, 80, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Trajectory line opacity")
+MACRO_CONFIG_INT(KxLineLaserUnfreezeSize, kx_line_laser_unfreeze_size, 6, 0, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser Unfreeze line width")
+MACRO_CONFIG_COL(KxLineLaserUnfreezeColor, kx_line_laser_unfreeze_color, 4294967295, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser Unfreeze line color")
+MACRO_CONFIG_INT(KxLineLaserUnfreezeAlpha, kx_line_laser_unfreeze_alpha, 80, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser Unfreeze line opacity")
+MACRO_CONFIG_INT(KxLinePathfinderSize, kx_line_pathfinder_size, 6, 0, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder line width")
+MACRO_CONFIG_COL(KxLinePathfinderColor, kx_line_pathfinder_color, 4294967295, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder line color")
+MACRO_CONFIG_INT(KxLinePathfinderAlpha, kx_line_pathfinder_alpha, 80, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder line opacity")
+MACRO_CONFIG_INT(KxLineEspSize, kx_line_esp_size, 6, 0, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP line width")
+MACRO_CONFIG_COL(KxLineEspColor, kx_line_esp_color, 4294967295, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP line color")
+MACRO_CONFIG_INT(KxLineEspAlpha, kx_line_esp_alpha, 80, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP line opacity")
+// v1.56.201: Per-component line rendering rainbow mode.
+// Each component has its own rainbow toggle and hue rotation speed.
+// v1.56.210: Per-component gradient mode + step. Gradient is visible ONLY
+// when Rainbow is ON. Step is the hue increment per line segment (1..180).
+MACRO_CONFIG_INT(KxLineAimBotRainbow, kx_line_aimbot_rainbow, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "AimBot line rainbow mode")
+MACRO_CONFIG_INT(KxLineAimBotRainbowSpeed, kx_line_aimbot_rainbow_speed, 10, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "AimBot line rainbow speed (display = value/10)")
+MACRO_CONFIG_INT(KxLineAimBotGradient, kx_line_aimbot_gradient, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "AimBot line gradient (visible only with Rainbow)")
+MACRO_CONFIG_INT(KxLineAimBotGradientStep, kx_line_aimbot_gradient_step, 15, 1, 180, CFGFLAG_CLIENT | CFGFLAG_SAVE, "AimBot line gradient hue step per segment")
+MACRO_CONFIG_INT(KxLineTriggerBotRainbow, kx_line_triggerbot_rainbow, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "TriggerBot line rainbow mode")
+MACRO_CONFIG_INT(KxLineTriggerBotRainbowSpeed, kx_line_triggerbot_rainbow_speed, 10, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "TriggerBot line rainbow speed (display = value/10)")
+MACRO_CONFIG_INT(KxLineTriggerBotGradient, kx_line_triggerbot_gradient, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "TriggerBot line gradient (visible only with Rainbow)")
+MACRO_CONFIG_INT(KxLineTriggerBotGradientStep, kx_line_triggerbot_gradient_step, 15, 1, 180, CFGFLAG_CLIENT | CFGFLAG_SAVE, "TriggerBot line gradient hue step per segment")
+MACRO_CONFIG_INT(KxLineTrajectoryRainbow, kx_line_trajectory_rainbow, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Trajectory line rainbow mode")
+MACRO_CONFIG_INT(KxLineTrajectoryRainbowSpeed, kx_line_trajectory_rainbow_speed, 10, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Trajectory line rainbow speed (display = value/10)")
+MACRO_CONFIG_INT(KxLineTrajectoryGradient, kx_line_trajectory_gradient, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Trajectory line gradient (visible only with Rainbow)")
+MACRO_CONFIG_INT(KxLineTrajectoryGradientStep, kx_line_trajectory_gradient_step, 15, 1, 180, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Trajectory line gradient hue step per segment")
+MACRO_CONFIG_INT(KxLineLaserUnfreezeRainbow, kx_line_laser_unfreeze_rainbow, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser Unfreeze line rainbow mode")
+MACRO_CONFIG_INT(KxLineLaserUnfreezeRainbowSpeed, kx_line_laser_unfreeze_rainbow_speed, 10, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser Unfreeze line rainbow speed (display = value/10)")
+MACRO_CONFIG_INT(KxLineLaserUnfreezeGradient, kx_line_laser_unfreeze_gradient, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser Unfreeze line gradient (visible only with Rainbow)")
+MACRO_CONFIG_INT(KxLineLaserUnfreezeGradientStep, kx_line_laser_unfreeze_gradient_step, 15, 1, 180, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser Unfreeze line gradient hue step per segment")
+MACRO_CONFIG_INT(KxLinePathfinderRainbow, kx_line_pathfinder_rainbow, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder line rainbow mode")
+MACRO_CONFIG_INT(KxLinePathfinderRainbowSpeed, kx_line_pathfinder_rainbow_speed, 10, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder line rainbow speed (display = value/10)")
+MACRO_CONFIG_INT(KxLinePathfinderGradient, kx_line_pathfinder_gradient, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder line gradient (visible only with Rainbow, overridden by Show Speed)")
+MACRO_CONFIG_INT(KxLinePathfinderGradientStep, kx_line_pathfinder_gradient_step, 15, 1, 180, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder line gradient hue step per segment")
+MACRO_CONFIG_INT(KxLineEspRainbow, kx_line_esp_rainbow, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP line rainbow mode")
+MACRO_CONFIG_INT(KxLineEspRainbowSpeed, kx_line_esp_rainbow_speed, 10, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP line rainbow speed (display = value/10)")
+MACRO_CONFIG_INT(KxLineEspGradient, kx_line_esp_gradient, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP line gradient (visible only with Rainbow)")
+MACRO_CONFIG_INT(KxLineEspGradientStep, kx_line_esp_gradient_step, 15, 1, 180, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP line gradient hue step per segment")
+// Laser unfreeze — predictive laser self-unfreeze
+MACRO_CONFIG_INT(KxLaserUnfreeze, kx_laser_unfreeze, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Laser unfreeze: predict freeze and auto-fire laser to unfreeze self")
+MACRO_CONFIG_INT(KxLaserUnfreezeAuto, kx_laser_unfreeze_auto, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Laser unfreeze: auto switch to laser weapon before firing")
+MACRO_CONFIG_INT(KxLaserUnfreezeFov, kx_laser_unfreeze_fov, 90, 5, 360, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Laser unfreeze: field of view in degrees (5-360)")
+MACRO_CONFIG_INT(KxLaserUnfreezeAngles, kx_laser_unfreeze_angles, 9, 1, 144, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Laser unfreeze: number of raycast angles to test (1-144)")
+MACRO_CONFIG_INT(KxLaserUnfreezeTicks, kx_laser_unfreeze_ticks, 10, 1, 50, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Laser unfreeze: ticks to predict for raycast simulation (1-50)")
+MACRO_CONFIG_INT(KxLaserUnfreezeTriggerTicks, kx_laser_unfreeze_trigger_ticks, 3, 1, 5, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Laser unfreeze: ticks to predict for freeze trigger (1-5)")
+MACRO_CONFIG_INT(KxLaserUnfreezeSilent, kx_laser_unfreeze_silent, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Laser unfreeze: silent mode — don't change player's crosshair, only send aim to server")
+MACRO_CONFIG_INT(KxLaserUnfreezeShowAttempt, kx_laser_unfreeze_show_attempt, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Laser unfreeze: render successful laser path as blue line with 5s fade")
+// Fake Aim — send fake aim to server for fun (Random/Robot/Spin)
+MACRO_CONFIG_INT(KxFakeAim, kx_fake_aim, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Fake Aim: send fake aim coordinates to server")
+MACRO_CONFIG_INT(KxFakeAimMode, kx_fake_aim_mode, 0, 0, 3, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Fake Aim mode: 0=Random 1=Robot 2=Spin 3=Lag")
+MACRO_CONFIG_INT(KxFakeAimSpeed, kx_fake_aim_speed, 10, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Fake Aim: speed (how often to change for Random, rotation speed for Spin)")
+MACRO_CONFIG_INT(KxFakeAimShowForMe, kx_fake_aim_show_for_me, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Fake Aim: show fake aim on player character (not just server)")
+// Basic Avoid Freeze - predict freeze via brute-force input combinations.
+MACRO_CONFIG_INT(KxBasicAvoidFreeze, kx_basic_avoid_freeze, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Basic Avoid Freeze: predict freeze and override input to avoid it")
+MACRO_CONFIG_INT(KxBafAvoidFreeze, kx_baf_avoid_freeze, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: avoid freeze tiles (m_FreezeTime > 0)")
+MACRO_CONFIG_INT(KxBafAvoidTeleport, kx_baf_avoid_teleport, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: avoid teleport tiles (IsTeleport/IsEvilTeleport)")
+MACRO_CONFIG_INT(KxBafAvoidDeath, kx_baf_avoid_death, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: avoid death tiles (TILE_DEATH / m_MarkedForDestroy)")
+MACRO_CONFIG_INT(KxBafDirection, kx_baf_direction, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: allow direction changes (-1/0/1)")
+MACRO_CONFIG_INT(KxBafJump, kx_baf_jump, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: allow jump toggle")
+MACRO_CONFIG_INT(KxBafHook, kx_baf_hook, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: allow hook toggle")
+MACRO_CONFIG_INT(KxBafAim, kx_baf_aim, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: allow aim angle variation in brute-force")
+MACRO_CONFIG_INT(KxBafFov, kx_baf_fov, 90, 5, 360, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: aim FOV in degrees (spread angles within this cone)")
+MACRO_CONFIG_INT(KxBafAngles, kx_baf_angles, 9, 1, 144, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: number of aim angles to try (within FOV)")
+MACRO_CONFIG_INT(KxBafSilent, kx_baf_silent, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: silent aim (don't move visible crosshair)")
+MACRO_CONFIG_INT(KxBafTicks, kx_baf_ticks, 10, 1, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: ticks to simulate per combination")
+MACRO_CONFIG_INT(KxBafTriggerTicks, kx_baf_trigger_ticks, 3, 1, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BAF: trigger prediction ticks (how far ahead to check for freeze)")
+// ESP — draw lines from a point to all players matching filters
+MACRO_CONFIG_INT(KxEsp, kx_esp, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP: draw lines from point A to all matching players")
+MACRO_CONFIG_INT(KxEspTeamFilter, kx_esp_team_filter, 0, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP team filter: 0=both 1=war 2=my")
+MACRO_CONFIG_INT(KxEspFriendFilter, kx_esp_friend_filter, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP friend filter: 0=both 1=ignore")
+MACRO_CONFIG_INT(KxEspDummyFilter, kx_esp_dummy_filter, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP dummy filter: 0=both 1=ignore")
+MACRO_CONFIG_INT(KxEspFreezeFilter, kx_esp_freeze_filter, 0, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP freeze filter: 0=both 1=freeze 2=no_freeze")
+MACRO_CONFIG_INT(KxEspMode, kx_esp_mode, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP point A source: 0=active player 1=screen coordinates")
+MACRO_CONFIG_INT(KxEspScreenX, kx_esp_screen_x, 0, 0, 7680, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP screen X coordinate (used when mode=screen coordinates)")
+MACRO_CONFIG_INT(KxEspScreenY, kx_esp_screen_y, 0, 0, 4320, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP screen Y coordinate (used when mode=screen coordinates)")
+MACRO_CONFIG_INT(KxEspStyle, kx_esp_style, 0, 0, 3, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP line style: 0=Line 1=Arrow 2=Dotted line 3=Dotted Arrow")
+MACRO_CONFIG_INT(KxEspSpeed, kx_esp_speed, 30, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "ESP dotted animation speed (0-100, only for dotted styles)")
+// Pathfinder parameter bounds — single source of truth for config limits + dynamic formulas.
+// Keep PF_CHUNK_SIZE_MAX / PF_HOOK_ANGLES_MAX in sync with the literals in the
+// KxPfHookAngles (4-32) macro below.
+static constexpr int PF_CHUNK_SIZE_MIN = 1;
+static constexpr int PF_CHUNK_SIZE_MAX = 50;
+static constexpr int PF_HOOK_ANGLES_MIN = 4;
+static constexpr int PF_HOOK_ANGLES_MAX = 32;
+// Max backtrack candidates per chunk = 3 * (ChunkSize+1) * (1+HookAngles).
+// Parameter sweep: 3 directions × (ChunkSize+1) jumpTicks × (1 no-hook + HookAngles hook-fire).
+// At max params: 3 * 51 * 33 = 5049.
+static constexpr int PF_CANDIDATES_MIN = 1;
+static constexpr int PF_CANDIDATES_MAX = 3 * (PF_CHUNK_SIZE_MAX + 1) * (1 + PF_HOOK_ANGLES_MAX);
+// Pathfinder tab (Kinetix→Pathfinder) — chunk-based mini TAS maker.
+// State machine: pathfinding (idle) -> stop (running) -> finish (done, path shown until user clicks).
+MACRO_CONFIG_INT(KxPfAlgorithm, kx_pf_algorithm, 0, 0, 14, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder algorithm: 0=KinoA* 1=GridA* 2=Dijkstra 3=Greedy 4=BFS 5=DFS 6=RRT 7=RRT* 8=PRM 9=MCTS 10=GA 11=CMA-ES 12=SA 13=HillClimb 14=RandomWalk")
+MACRO_CONFIG_INT(KxPfChunkSize, kx_pf_chunk_size, 20, PF_CHUNK_SIZE_MIN, PF_CHUNK_SIZE_MAX, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder: ticks per input chunk (1-50)")
+MACRO_CONFIG_INT(KxPfCandidates, kx_pf_candidates, 200, 50, 2000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder: max search nodes per chunk")
+MACRO_CONFIG_INT(KxPfHookAngles, kx_pf_hook_angles, 9, 4, 32, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder: hook fan-raycast rays (4-32)")
+MACRO_CONFIG_INT(KxPfHorizon, kx_pf_horizon, 6, 1, 50, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder: ticks to apply per chunk before re-planning (1-chunk_size)")
+MACRO_CONFIG_INT(KxPfBacktrackCandidates, kx_pf_backtrack_candidates, 100, PF_CANDIDATES_MIN, PF_CANDIDATES_MAX, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder: top-N candidates kept per chunk for backtracking")
+MACRO_CONFIG_INT(KxPfAStarWeight, kx_pf_astar_weight, 3, 1, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder: A* heuristic weight (1=optimal, higher=faster but suboptimal)")
+MACRO_CONFIG_INT(KxPfAStarNodeBudget, kx_pf_astar_node_budget, 100000, 1000, 1000000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder: A* max nodes before giving up (1000-1000000)")
+MACRO_CONFIG_INT(KxPfPerf, kx_pf_perf, 100, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder: performance budget per tick in % (1-100; lower = slower but smoother, spreads chunk generation across many ticks)")
+MACRO_CONFIG_INT(KxPfAdvancedSearch, kx_pf_advanced_search, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder: RHEA (Rolling Horizon Evolutionary Algorithm) — evolves a population of input sequences per chunk. When off, uses default fixed-input candidates.")
+MACRO_CONFIG_INT(KxPfRheaGenerations, kx_pf_rhea_generations, 10, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder RHEA: number of evolution generations per chunk (more = better candidates but slower)")
+// Score method — combine any of these (checkboxes; final score = weighted sum of enabled)
+MACRO_CONFIG_INT(KxPfScoreDist, kx_pf_score_dist, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Score: distance reduction (how much closer the chunk moved us to goal)")
+MACRO_CONFIG_INT(KxPfScoreFlow, kx_pf_score_flow, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Score: flow-field alignment (how well the trajectory follows the BFS flow field)")
+// Fine method — penalty weights (checkboxes; each enabled penalty is added to the score)
+MACRO_CONFIG_INT(KxPfFineFreeze, kx_pf_fine_freeze, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fine: freeze penalty (per freeze tile touched)")
+MACRO_CONFIG_INT(KxPfFineRetract, kx_pf_fine_retract, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fine: hook retract penalty (wasted hook that retracted)")
+MACRO_CONFIG_INT(KxPfFineDeath, kx_pf_fine_death, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fine: death penalty (chunk that kills the tee)")
+MACRO_CONFIG_INT(KxPfFineWall, kx_pf_fine_wall, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fine: wall-hit penalty (per collision during chunk)")
+MACRO_CONFIG_INT(KxPfFineAir, kx_pf_fine_air, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fine: air-time penalty (per tick airborne)")
+MACRO_CONFIG_INT(KxPfFineHook, kx_pf_fine_hook, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fine: hook-fire penalty (per hook fire — discourage hook spam)")
+MACRO_CONFIG_INT(KxPfFineStuck, kx_pf_fine_stuck, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fine: stuck penalty — large cost added to A* node G when a chunk's end position is within 2 pixels of its start (bot didn't move). Discourages stall branches.")
+// Visuals (Pathfinder tab)
+MACRO_CONFIG_INT(KxPfShowField, kx_pf_show_field, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Visuals: show flow field")
+MACRO_CONFIG_INT(KxPfShowHooks, kx_pf_show_hooks, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Visuals: show hook lines (blue)")
+MACRO_CONFIG_INT(KxPfShowBranches, kx_pf_show_branches, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Visuals: show other branches (semi-transparent)")
+MACRO_CONFIG_INT(KxPfShowSpeed, kx_pf_show_speed, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Visuals: show speed gradient (red=slow, blue=fast)")
+// IRC (emote-based communication)
+MACRO_CONFIG_INT(KxIrcEnabled, kx_irc_enabled, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable IRC emote communication and decoding")
+MACRO_CONFIG_INT(KxIrcRevealJoin, kx_irc_reveal_join, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Send handshake on join to reveal yourself as IRC user")
+MACRO_CONFIG_INT(KxIrcNameplateTag, kx_irc_nameplate_tag, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show client tag in player nameplates if IRC user detected")
+// ============================================================================
+// v1.56.171 BUG9: Kinetix kx_ commands converted from Console()->Register to
+// MACRO_CONFIG_INT cvars so DDNet's `toggle` command works with them in binds
+// (e.g. `bind r toggle kx_attack 1 0`). Previously kx_attack/kx_aimbot/etc.
+// were console commands and `toggle` printed "Invalid command: 'kx_attack'".
+//
+// On/off flags use 0/1 range. Numeric commands have explicit min/max bounds
+// matching the old Con-handler clamps. Float distances are stored as int
+// (pixel precision) — readers cast to float.
+//
+// Commands kept as console commands (temporal/complex, per user instruction):
+//   kx_exec, kx_exec_stop, kx_irc_send, kx_pf_play, kx_send, kx_atk_set,
+//   kx_macro_save, kx_macro_load, kx_pathfinder_go, kx_targets, kx_bots,
+//   kx_rescue_ids, kx_atk_dists, kx_pf_live, kx_macro_play, kx_macro_record,
+//   kx_macro_capture (these have per-dummy side effects or complex state).
+// ============================================================================
+
+// Attack / botnet on/off flags
+MACRO_CONFIG_INT(KxAttack, kx_attack, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Attack Mode: 1=on 0=off")
+MACRO_CONFIG_INT(KxRandomAim, kx_random_aim, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Random Aim: 1=on 0=off")
+MACRO_CONFIG_INT(KxRandomAimInterval, kx_random_aim_interval, 100, 0, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Random Aim: change interval in ms (0=default)")
+MACRO_CONFIG_INT(KxCopyMoves, kx_copy_moves, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Copy Moves: 1=on 0=off")
+MACRO_CONFIG_INT(KxCopyTargetId, kx_copy_target_id, -1, -1, 127, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Copy Moves: target player ID (-1=disabled)")
+MACRO_CONFIG_INT(KxTargetAll, kx_target_all, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Attack all (targets become blacklist): 1=on 0=off")
+MACRO_CONFIG_INT(KxMain, kx_main, 0, 0, 127, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Main target ID")
+// Attack settings (was kx_atk_set, now individual cvars)
+MACRO_CONFIG_INT(KxAutoAim, kx_autoaim, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Auto aim at target")
+MACRO_CONFIG_INT(KxAutoFire, kx_autofire, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Auto fire at target")
+MACRO_CONFIG_INT(KxAutoHook, kx_autohook, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Auto hook target")
+MACRO_CONFIG_INT(KxMove, kx_move, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Move towards target")
+MACRO_CONFIG_INT(KxStand, kx_stand, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Stand when close")
+MACRO_CONFIG_INT(KxRescue, kx_rescue, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Rescue frozen allies")
+MACRO_CONFIG_INT(KxRescueAll, kx_rescue_all, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Rescue all (not just list)")
+MACRO_CONFIG_INT(KxSmartDetect, kx_smart_detect, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Smart detect for rescue")
+MACRO_CONFIG_INT(KxSmartRescue, kx_smart_rescue, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Smart rescue pathfinder")
+MACRO_CONFIG_INT(KxKillFrz, kx_kill_frz, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Kill on freeze")
+MACRO_CONFIG_INT(KxAtkMain, kx_atk_main, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Attack main target")
+MACRO_CONFIG_INT(KxAutoMain, kx_auto_main, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Auto-set main to active dummy")
+MACRO_CONFIG_INT(KxHammer, kx_hammer, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Auto hammer")
+MACRO_CONFIG_INT(KxPfSimulatePlayers, kx_pf_simulate_players, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Simulate players in pathfinder")
+MACRO_CONFIG_INT(KxAvoidFreeze, kx_avoid_freeze, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Avoid freeze tiles")
+MACRO_CONFIG_INT(KxPfHook, kx_pf_hook, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder hook to walls")
+MACRO_CONFIG_INT(KxKinodynamic, kx_kinodynamic, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable Kinodynamic A* movement")
+MACRO_CONFIG_INT(KxStandOnX, kx_stand_on_x, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Stand only on X axis")
+// Attack distances (was kx_atk_dists, stored as int = float pixels)
+MACRO_CONFIG_INT(KxFireDist, kx_fire_dist, 65, 0, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fire distance (pixels)")
+MACRO_CONFIG_INT(KxHookDist, kx_hook_dist, 400, 0, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Hook distance (pixels)")
+MACRO_CONFIG_INT(KxRescueRadius, kx_rescue_radius, 500, 0, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Rescue radius (pixels)")
+MACRO_CONFIG_INT(KxTargetDist, kx_target_dist, 300, 0, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Target distance (pixels)")
+MACRO_CONFIG_INT(KxMainDist, kx_main_dist, 100000, 0, 100000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Main distance (pixels, 100000=infinity)")
+MACRO_CONFIG_INT(KxStandDist, kx_stand_dist, 64, 0, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Stand distance (pixels)")
+MACRO_CONFIG_INT(KxMainStandDist, kx_main_stand_dist, 128, 0, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Main stand distance (pixels)")
+MACRO_CONFIG_INT(KxLaserRescue, kx_laser_rescue, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser rescue enabled")
+MACRO_CONFIG_INT(KxLaserRescueDist, kx_laser_rescue_dist, 800, 0, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser rescue distance (pixels)")
+MACRO_CONFIG_INT(KxAvoidFreezeRadius, kx_avoid_freeze_radius, 2, 0, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Avoid freeze radius (tiles)")
+MACRO_CONFIG_INT(KxPfSimulateScore, kx_pf_simulate_score, 25, 0, 100000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pathfinder simulate score threshold")
+// Attack numeric params
+MACRO_CONFIG_INT(KxAtkHookDelay, kx_atk_hook_delay, 1000, 0, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Hook delay in ms (0=disabled)")
+MACRO_CONFIG_INT(KxClientDelay, kx_client_delay, 0, 0, 10000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Client delay in ms (0 to disable)")
+MACRO_CONFIG_INT(KxAtkPathfinder, kx_atk_pathfinder, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable A* pathfinder movement")
+MACRO_CONFIG_INT(KxAtkPathfinderRays, kx_atk_pathfinder_rays, 24, 12, 90, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Number of raycast rays (12-90)")
+MACRO_CONFIG_INT(KxAtkPathfinderRaysDist, kx_atk_pathfinder_rays_dist, 6, 1, 128, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Raycast view radius (1-128 tiles)")
+MACRO_CONFIG_INT(KxAtkPathfinderSnap, kx_atk_pathfinder_snap, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Snap to tile center when flow is vertical")
+MACRO_CONFIG_INT(KxAtkPathfinderSps, kx_atk_pathfinder_sps, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Simulate players method: 0=walls, 1=score(push)")
+// Kinodynamic A* (State-Lattice) settings
+MACRO_CONFIG_INT(KxKinoCandidates, kx_kino_candidates, 800, 100, 2000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Kinodynamic: A* node budget (100-2000)")
+MACRO_CONFIG_INT(KxKinoTicks, kx_kino_ticks, 15, 3, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Kinodynamic: max search depth in primitives (3-20)")
+MACRO_CONFIG_INT(KxKinoHookAngles, kx_kino_hook_angles, 8, 4, 32, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Kinodynamic: number of hook angles (4-32)")
+MACRO_CONFIG_INT(KxKinoCacheTicks, kx_kino_cache_ticks, 128, 1, 128, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Kinodynamic: cache duration in ticks (1-128, 128=full plan)")
+MACRO_CONFIG_INT(KxKinoShowPath, kx_kino_show_path, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Kinodynamic: show predicted path")
+MACRO_CONFIG_INT(KxKinoShowField, kx_kino_show_field, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Kinodynamic: show vector field")
+MACRO_CONFIG_INT(KxKinoAggressive, kx_kino_aggressive, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Kinodynamic: force-apply best partial plan")
+// AimBot / TriggerBot
+MACRO_CONFIG_INT(KxAimBot, kx_aimbot, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "AimBot: 1=on 0=off")
+MACRO_CONFIG_INT(KxTriggerBot, kx_triggerbot, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "TriggerBot: 1=on 0=off")
+
 /*
  * Add config variables for mods below this comment to avoid merge conflicts.
  */

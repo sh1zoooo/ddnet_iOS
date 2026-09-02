@@ -8,4 +8,13 @@ enum
 	NUM_DUMMIES = 2,
 };
 
+// Kinetix compat: the Kinetix botnet was written for an 8-slot dummy engine.
+// The engine itself still only supports NUM_DUMMIES(2) real connections; the
+// compat overloads in IClient report dummies 2..7 as never connected, so all
+// MAX_DUMMIES-sized arrays/loops in the Kinetix components stay in bounds.
+enum
+{
+	MAX_DUMMIES = 8,
+};
+
 #endif

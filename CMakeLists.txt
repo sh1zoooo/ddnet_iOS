@@ -918,7 +918,16 @@ add_library(json EXCLUDE_FROM_ALL OBJECT ${DEP_JSON_SRC})
 set_src(DEP_MD5_SRC GLOB src/engine/external/md5 md5.c md5.h)
 add_library(md5 EXCLUDE_FROM_ALL OBJECT ${DEP_MD5_SRC})
 
-list(APPEND TARGETS_DEP json md5)
+# Kinetix: Yoga layout engine (vendored, used by the ClickGUI overlay)
+file(GLOB_RECURSE DEP_YOGA_SRC CONFIGURE_DEPENDS src/engine/external/yoga/*.cpp)
+add_library(yoga EXCLUDE_FROM_ALL OBJECT ${DEP_YOGA_SRC})
+target_include_directories(yoga PRIVATE src/engine/external)
+set_property(TARGET yoga PROPERTY CXX_STANDARD 20)
+set_property(TARGET yoga PROPERTY CXX_STANDARD_REQUIRED ON)
+set_property(TARGET yoga PROPERTY CXX_EXTENSIONS OFF)
+set(DEP_YOGA $<TARGET_OBJECTS:yoga>)
+
+list(APPEND TARGETS_DEP json md5 yoga)
 set(DEP_JSON $<TARGET_OBJECTS:json>)
 set(DEP_MD5)
 if(NOT CRYPTO_FOUND)
@@ -2616,6 +2625,42 @@ if(CLIENT)
     components/key_binder.h
     components/local_server.cpp
     components/local_server.h
+    components/kinetix/aimbot.cpp
+    components/kinetix/aimbot.h
+    components/kinetix/attack/attack.cpp
+    components/kinetix/attack/attack_commands.cpp
+    components/kinetix/basic_avoid_freeze.cpp
+    components/kinetix/basic_avoid_freeze.h
+    components/kinetix/bot_control.cpp
+    components/kinetix/bot_control.h
+    components/kinetix/clickgui.cpp
+    components/kinetix/clickgui.h
+    components/kinetix/console_commands.cpp
+    components/kinetix/dummies/dummy_helpers.cpp
+    components/kinetix/dummies/dummy_management.cpp
+    components/kinetix/dummies/process_dummy.cpp
+    components/kinetix/esp.cpp
+    components/kinetix/esp.h
+    components/kinetix/fake_aim.cpp
+    components/kinetix/fly_ride.cpp
+    components/kinetix/helpers.cpp
+    components/kinetix/irc.cpp
+    components/kinetix/irc.h
+    components/kinetix/kinetix.cpp
+    components/kinetix/kinetix.h
+    components/kinetix/kinetix_internal.h
+    components/kinetix/kinetix_lines.cpp
+    components/kinetix/kinetix_lines.h
+    components/kinetix/kinodynamic/kinodynamic.cpp
+    components/kinetix/kinodynamic/kinodynamic_render.cpp
+    components/kinetix/laser_unfreeze.cpp
+    components/kinetix/macro/macro_commands.cpp
+    components/kinetix/pathfinder/map_grid.cpp
+    components/kinetix/pathfinder/pathfinder.cpp
+    components/kinetix/pathfinder/pathfinder_astar.cpp
+    components/kinetix/pathfinder/pathfinder_tab.cpp
+    components/kinetix/trajectory.cpp
+    components/kinetix/trajectory.h
     components/mapimages.cpp
     components/mapimages.h
     components/maplayers.cpp
@@ -2821,7 +2866,7 @@ if(CLIENT)
   )
   set(CLIENT_SRC ${ENGINE_CLIENT} ${PLATFORM_CLIENT} ${GAME_CLIENT} ${GAME_EDITOR} ${GAME_MAP} ${GAME_GENERATED_CLIENT})
 
-  set(DEPS_CLIENT ${DEPS} ${GLEW_DEP} ${WAVPACK_DEP})
+  set(DEPS_CLIENT ${DEPS} ${GLEW_DEP} ${WAVPACK_DEP} ${DEP_YOGA})
 
   # Libraries
   set(LIBS_CLIENT
@@ -3965,6 +4010,7 @@ foreach(target ${TARGETS_OWN})
   target_include_directories(${target} PRIVATE ${PROJECT_BINARY_DIR}/src)
   target_include_directories(${target} PRIVATE src)
   target_include_directories(${target} PRIVATE src/rust-bridge)
+  target_include_directories(${target} PRIVATE src/engine/external) # Kinetix: <yoga/*.h> includes
   target_compile_definitions(${target} PRIVATE $<$<CONFIG:Debug>:CONF_DEBUG>)
   target_include_directories(${target} SYSTEM PRIVATE ${CURL_INCLUDE_DIRS} ${SQLite3_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
   target_compile_definitions(${target} PRIVATE GLEW_STATIC)

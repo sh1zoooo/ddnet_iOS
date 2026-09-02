@@ -49,6 +49,14 @@
 #include "components/infomessages.h"
 #include "components/items.h"
 #include "components/key_binder.h"
+#include "components/kinetix/aimbot.h"
+#include "components/kinetix/basic_avoid_freeze.h"
+#include "components/kinetix/bot_control.h"
+#include "components/kinetix/clickgui.h"
+#include "components/kinetix/esp.h"
+#include "components/kinetix/kinetix.h"
+#include "components/kinetix/kinetix_lines.h"
+#include "components/kinetix/trajectory.h"
 #include "components/local_server.h"
 #include "components/mapimages.h"
 #include "components/maplayers.h"
@@ -162,6 +170,15 @@ public:
 	CFlow m_Flow;
 	CHud m_Hud;
 	CAutoFinish m_AutoFinish;
+	// Kinetix client components
+	CBotNet m_BotNet;
+	CClickGui m_ClickGui;
+	CAimBot m_AimBot;
+	CEsp m_Esp;
+	CTrajectory m_Trajectory;
+	CKinetixLines m_KinetixLines;
+	CBotControl m_BotControl;
+	CBasicAvoidFreeze m_BasicAvoidFreeze;
 	CImportantAlert m_ImportantAlert;
 	CDebugHud m_DebugHud;
 	CControls m_Controls;
@@ -669,8 +686,9 @@ public:
 
 	// DDRace
 
-	int m_aLocalIds[NUM_DUMMIES];
+	int m_aLocalIds[MAX_DUMMIES]; // Kinetix compat: 8 slots, engine fills 0..1
 	CNetObj_PlayerInput m_DummyInput;
+	CNetObj_PlayerInput m_aDummyInput[MAX_DUMMIES]; // Kinetix compat: per-dummy stored input (slots 0..1 meaningful)
 	CNetObj_PlayerInput m_HammerInput;
 	unsigned int m_DummyFire;
 	bool m_ReceivedDDNetPlayer;

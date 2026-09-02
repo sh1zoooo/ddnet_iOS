@@ -196,6 +196,18 @@ public:
 	virtual bool DummyConnected() const = 0;
 	virtual bool DummyConnecting() const = 0;
 	virtual bool DummyConnectingDelayed() const = 0;
+	// Kinetix compat: 8-slot dummy API on the 2-slot engine.
+	// Dummies 2..7 simply report as never connected/allowed.
+	bool DummyConnected(int Dummy) const { return Dummy == 0 || (Dummy == 1 && DummyConnected()); }
+	bool DummyConnecting(int Dummy) const { return Dummy == 1 && DummyConnecting(); }
+	bool DummyConnectingDelayed(int Dummy) const { return Dummy == 1 && DummyConnectingDelayed(); }
+	void DummyConnect(int Dummy) { if(Dummy == 1) DummyConnect(); }
+	void DummyDisconnect(int Dummy, const char *pReason) { if(Dummy == 1) DummyDisconnect(pReason); }
+	bool AnyDummyConnected() const { return DummyConnected(); }
+	bool AnyDummyConnecting() const { return DummyConnecting(); }
+	bool AnyDummyConnectingDelayed() const { return DummyConnectingDelayed(); }
+	int DummyCount() const { return DummyConnected() ? 2 : 1; }
+	int LastDummy() const { return DummyConnected() ? 1 : 0; }
 	virtual bool DummyAllowed() const = 0;
 
 	virtual void Restart() = 0;

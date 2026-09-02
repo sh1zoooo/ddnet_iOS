@@ -25,20 +25,31 @@ public:
 		AUTOMATED,
 	};
 
-	vec2 m_aMousePos[NUM_DUMMIES];
-	vec2 m_aMousePosOnAction[NUM_DUMMIES];
-	vec2 m_aTargetPos[NUM_DUMMIES];
+	// Kinetix compat: MAX_DUMMIES(8) so botnet code can index all slots.
+	vec2 m_aMousePos[MAX_DUMMIES];
+	vec2 m_aMousePosOnAction[MAX_DUMMIES];
+	vec2 m_aTargetPos[MAX_DUMMIES];
 
-	EMouseInputType m_aMouseInputType[NUM_DUMMIES];
+	EMouseInputType m_aMouseInputType[MAX_DUMMIES];
 
 	int m_aAmmoCount[NUM_WEAPONS];
 
 	int64_t m_LastSendTime;
-	CNetObj_PlayerInput m_aInputData[NUM_DUMMIES];
-	CNetObj_PlayerInput m_aLastData[NUM_DUMMIES];
-	int m_aInputDirectionLeft[NUM_DUMMIES];
-	int m_aInputDirectionRight[NUM_DUMMIES];
-	int m_aShowHookColl[NUM_DUMMIES];
+	CNetObj_PlayerInput m_aInputData[MAX_DUMMIES];
+	CNetObj_PlayerInput m_aLastData[MAX_DUMMIES];
+	int m_aInputDirectionLeft[MAX_DUMMIES];
+	int m_aInputDirectionRight[MAX_DUMMIES];
+	int m_aShowHookColl[MAX_DUMMIES];
+
+	// Kinetix: laser unfreeze silent aim — when active, SnapInput uses this offset
+	// instead of m_aMousePos for m_TargetX/Y. Set by UpdateLaserUnfreeze when
+	// silent mode is on. Consumed (reset to false) by SnapInput.
+	bool m_LaserUnfreezeAimActive = false;
+	vec2 m_LaserUnfreezeAimOffset = vec2(0, 0);
+
+	// Kinetix: fake aim render data — set in SnapInput, read in players.cpp.
+	bool m_FakeAimRenderActive = false;
+	vec2 m_FakeAimRenderOffset = vec2(0, 0);
 
 	CControls();
 	int Sizeof() const override { return sizeof(*this); }

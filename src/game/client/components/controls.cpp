@@ -18,6 +18,13 @@
 #include <game/client/gameclient.h>
 #include <game/collision.h>
 
+// Kinetix integration
+#include <game/client/components/kinetix/basic_avoid_freeze.h>
+#include <game/client/components/kinetix/bot_control.h>
+#include <game/client/components/kinetix/kinetix.h>
+#include <game/client/prediction/entities/character.h>
+#include <game/client/prediction/gameworld.h>
+
 CControls::CControls()
 {
 	mem_zero(&m_aLastData, sizeof(m_aLastData));
@@ -223,6 +230,68 @@ int CControls::SnapInput(int *pData)
 		if(!GameClient()->m_GameInfo.m_BugDDRaceInput)
 			ResetInput(g_Config.m_ClDummy);
 
+		// bot control — re-apply after freeze so bot inputs bypass menu freeze
+		{
+			CBotControl &Bot = GameClient()->m_BotControl;
+			for(int D = 0; D < MAX_DUMMIES; D++)
+			{
+				if(!Bot.IsBotActiveAny(D))
+					continue;
+
+				CNetObj_PlayerInput *pInput;
+				if(D == g_Config.m_ClDummy)
+					pInput = &m_aInputData[D];
+				else
+					pInput = &GameClient()->m_aDummyInput[D];
+
+				if(Bot.IsBotActiveJump(D))
+					pInput->m_Jump = Bot.State(D).m_Jump ? 1 : 0;
+				if(Bot.IsBotActiveHook(D))
+					pInput->m_Hook = Bot.State(D).m_Hook ? 1 : 0;
+				if(Bot.IsBotActiveMove(D))
+					pInput->m_Direction = Bot.State(D).m_Direction;
+				if(Bot.IsBotActiveFire(D) && Bot.State(D).m_Fire)
+				{
+					pInput->m_Fire++;
+					pInput->m_Fire &= INPUT_STATE_MASK;
+				}
+
+				// Aim: absolute (kx_oaim) takes priority over relative (kx_aim)
+				if(Bot.IsBotActiveOverrideAim(D))
+				{
+					m_aMousePos[D].x = (float)Bot.State(D).m_OverrideTargetX;
+					m_aMousePos[D].y = (float)Bot.State(D).m_OverrideTargetY;
+					pInput->m_TargetX = Bot.State(D).m_OverrideTargetX;
+					pInput->m_TargetY = Bot.State(D).m_OverrideTargetY;
+				}
+				else if(Bot.IsBotActiveAim(D))
+				{
+					m_aMousePos[D].x += (float)Bot.State(D).m_TargetX;
+					m_aMousePos[D].y += (float)Bot.State(D).m_TargetY;
+					pInput->m_TargetX = (int)m_aMousePos[D].x;
+					pInput->m_TargetY = (int)m_aMousePos[D].y;
+				}
+
+				// Copy bot-controlled dummy input back
+				if(D != g_Config.m_ClDummy)
+					m_aInputData[D] = *pInput;
+			}
+		}
+
+		// botnet — sync inactive dummy inputs (menu/chat freeze block)
+		{
+			CBotNet &BN = GameClient()->m_BotNet;
+			for(int D = 0; D < MAX_DUMMIES; D++)
+			{
+				if(D == g_Config.m_ClDummy)
+					continue;
+				if(D != 0 && !GameClient()->Client()->DummyConnected(D))
+					continue;
+				if(BN.IsDummyActive(D))
+					m_aInputData[D] = GameClient()->m_aDummyInput[D];
+			}
+		}
+
 		mem_copy(pData, &m_aInputData[g_Config.m_ClDummy], sizeof(m_aInputData[0]));
 
 		// set the target anyway though so that we can keep seeing our surroundings,
@@ -232,6 +301,26 @@ int CControls::SnapInput(int *pData)
 
 		// send once a second just to be sure
 		Send = Send || time_get() > m_LastSendTime + time_freq();
+
+		// force send when bot is active — bypass menu freeze
+		{
+			CBotControl &Bot = GameClient()->m_BotControl;
+			for(int D = 0; D < MAX_DUMMIES; D++)
+			{
+				if(D == g_Config.m_ClDummy && Bot.IsBotActiveAny(D))
+				{
+					Send = true;
+					break;
+				}
+			}
+		}
+		// force send when botnet is active
+		{
+			// v1.56.171 BUG9: m_AttackEnabled/m_CopyMoves/m_RandomAim/m_PathfinderEnabled
+			// moved to cvars (g_Config.m_KxAttack/m_KxCopyMoves/m_KxRandomAim/m_KxAtkPathfinder)
+			if(g_Config.m_KxAttack || g_Config.m_KxCopyMoves || g_Config.m_KxRandomAim || g_Config.m_KxAtkPathfinder)
+				Send = true;
+		}
 	}
 	else
 	{
@@ -284,18 +373,105 @@ int CControls::SnapInput(int *pData)
 			m_aInputData[!g_Config.m_ClDummy] = *pDummyInput;
 		}
 
+		// dummy control
 		if(g_Config.m_ClDummyControl)
 		{
-			CNetObj_PlayerInput *pDummyInput = &GameClient()->m_DummyInput;
-			pDummyInput->m_Jump = g_Config.m_ClDummyJump;
+			for(int D = 0; D < MAX_DUMMIES; D++)
+			{
+				if(D == g_Config.m_ClDummy)
+					continue;
+				if(D != 0 && !GameClient()->Client()->DummyConnected(D))
+					continue;
 
-			if(g_Config.m_ClDummyFire)
-				pDummyInput->m_Fire = g_Config.m_ClDummyFire;
-			else if((pDummyInput->m_Fire & 1) != 0)
-				pDummyInput->m_Fire++;
+				CNetObj_PlayerInput *pDummyInput = &GameClient()->m_aDummyInput[D];
+				pDummyInput->m_Jump = g_Config.m_ClDummyJump;
 
-			pDummyInput->m_Hook = g_Config.m_ClDummyHook;
-			m_aInputData[!g_Config.m_ClDummy] = *pDummyInput;
+				if(g_Config.m_ClDummyFire)
+					pDummyInput->m_Fire = g_Config.m_ClDummyFire;
+				else if((pDummyInput->m_Fire & 1) != 0)
+					pDummyInput->m_Fire++;
+
+				pDummyInput->m_Hook = g_Config.m_ClDummyHook;
+
+				// Aim: copy player's target X/Y to dummy (like Jump/Fire/Hook).
+				if(g_Config.m_KxDummyAim)
+				{
+					pDummyInput->m_TargetX = m_aInputData[g_Config.m_ClDummy].m_TargetX;
+					pDummyInput->m_TargetY = m_aInputData[g_Config.m_ClDummy].m_TargetY;
+				}
+
+				// Direction: copy player's movement direction to dummy.
+				if(g_Config.m_KxDummyDirection)
+					pDummyInput->m_Direction = m_aInputData[g_Config.m_ClDummy].m_Direction;
+
+				m_aInputData[D] = *pDummyInput;
+
+				// keep the engine's canonical dummy input in sync (2-slot engine)
+				if(D == !g_Config.m_ClDummy)
+					GameClient()->m_DummyInput = *pDummyInput;
+			}
+		}
+
+		// bot control — apply per-dummy bot input
+		{
+			CBotControl &Bot = GameClient()->m_BotControl;
+			for(int D = 0; D < MAX_DUMMIES; D++)
+			{
+				if(!Bot.IsBotActiveAny(D))
+					continue;
+
+				CNetObj_PlayerInput *pInput;
+				if(D == g_Config.m_ClDummy)
+					pInput = &m_aInputData[D];
+				else
+					pInput = &GameClient()->m_aDummyInput[D];
+
+				if(Bot.IsBotActiveJump(D))
+					pInput->m_Jump = Bot.State(D).m_Jump ? 1 : 0;
+				if(Bot.IsBotActiveHook(D))
+					pInput->m_Hook = Bot.State(D).m_Hook ? 1 : 0;
+				if(Bot.IsBotActiveMove(D))
+					pInput->m_Direction = Bot.State(D).m_Direction;
+				if(Bot.IsBotActiveFire(D) && Bot.State(D).m_Fire)
+				{
+					pInput->m_Fire++;
+					pInput->m_Fire &= INPUT_STATE_MASK;
+				}
+
+				// Aim: absolute (kx_oaim) takes priority over relative (kx_aim)
+				if(Bot.IsBotActiveOverrideAim(D))
+				{
+					m_aMousePos[D].x = (float)Bot.State(D).m_OverrideTargetX;
+					m_aMousePos[D].y = (float)Bot.State(D).m_OverrideTargetY;
+					pInput->m_TargetX = Bot.State(D).m_OverrideTargetX;
+					pInput->m_TargetY = Bot.State(D).m_OverrideTargetY;
+				}
+				else if(Bot.IsBotActiveAim(D))
+				{
+					m_aMousePos[D].x += (float)Bot.State(D).m_TargetX;
+					m_aMousePos[D].y += (float)Bot.State(D).m_TargetY;
+					pInput->m_TargetX = (int)m_aMousePos[D].x;
+					pInput->m_TargetY = (int)m_aMousePos[D].y;
+				}
+
+				// Copy bot-controlled dummy input back
+				if(D != g_Config.m_ClDummy)
+					m_aInputData[D] = *pInput;
+			}
+		}
+
+		// botnet — sync inactive dummy inputs
+		{
+			CBotNet &BN = GameClient()->m_BotNet;
+			for(int D = 0; D < MAX_DUMMIES; D++)
+			{
+				if(D == g_Config.m_ClDummy)
+					continue;
+				if(D != 0 && !GameClient()->Client()->DummyConnected(D))
+					continue;
+				if(BN.IsDummyActive(D))
+					m_aInputData[D] = GameClient()->m_aDummyInput[D];
+			}
 		}
 
 		// stress testing
@@ -323,6 +499,14 @@ int CControls::SnapInput(int *pData)
 		Send = Send || m_aInputData[g_Config.m_ClDummy].m_PrevWeapon != m_aLastData[g_Config.m_ClDummy].m_PrevWeapon;
 		Send = Send || time_get() > m_LastSendTime + time_freq() / 25; // send at least 25 Hz
 		Send = Send || (GameClient()->m_Snap.m_pLocalCharacter && GameClient()->m_Snap.m_pLocalCharacter->m_Weapon == WEAPON_NINJA && (m_aInputData[g_Config.m_ClDummy].m_Direction || m_aInputData[g_Config.m_ClDummy].m_Jump || m_aInputData[g_Config.m_ClDummy].m_Hook));
+
+		// force send when botnet is active
+		{
+			// v1.56.171 BUG9: m_AttackEnabled/m_CopyMoves/m_RandomAim/m_PathfinderEnabled
+			// moved to cvars (g_Config.m_KxAttack/m_KxCopyMoves/m_KxRandomAim/m_KxAtkPathfinder)
+			if(g_Config.m_KxAttack || g_Config.m_KxCopyMoves || g_Config.m_KxRandomAim || g_Config.m_KxAtkPathfinder)
+				Send = true;
+		}
 	}
 
 	// copy and return size
@@ -331,8 +515,291 @@ int CControls::SnapInput(int *pData)
 	if(!Send)
 		return 0;
 
+	// v1.56.169 BUG7: BAF.ApplyOverride MUST run before the laserAimActive
+	// check below. BAF silent sets m_LaserUnfreezeAimActive (same channel as
+	// Laser Unfreeze + AimBot). If BAF runs AFTER the check (as it did since
+	// v1.56.130), the flag is deferred to next tick — Fake Aim is not blocked
+	// in the current tick and overwrites m_TargetX/Y. Moving BAF here makes
+	// the flag visible immediately: line 543 reads it, applies BAF's aim, and
+	// line 669 (!laserAimActive) blocks Fake Aim. BAF also modifies
+	// dir/jump/hook directly — those go to server via mem_copy at the end.
+	// (AimBot + Laser Unfreeze run in OnUpdate before SnapInput, so their
+	// flags are already set when BAF runs here — BAF checks !m_LaserUnfreezeAimActive
+	// before overwriting, giving Laser Unfreeze/AimBot priority on the aim channel.)
+	GameClient()->m_BasicAvoidFreeze.ApplyOverride();
+
+	// Laser unfreeze silent aim — highest priority (consumes flag set by
+	// Laser Unfreeze, AimBot, or BAF above).
+	bool laserAimActive = m_LaserUnfreezeAimActive;
+	if(laserAimActive)
+	{
+		m_aInputData[g_Config.m_ClDummy].m_TargetX = (int)m_LaserUnfreezeAimOffset.x;
+		m_aInputData[g_Config.m_ClDummy].m_TargetY = (int)m_LaserUnfreezeAimOffset.y;
+		m_LaserUnfreezeAimActive = false;
+	}
+
+	// kx_pf_play: replay pathfinder path on real player input.
+	// Runs after BAF (BAF has priority for freeze avoidance) but before
+	// fake aim + mem_copy so the path input reaches the server.
+	GameClient()->m_BotNet.ApplyPfGoInput(&m_aInputData[g_Config.m_ClDummy]);
+
+	// v1.56.151: Fly Ride — pilot input override.
+	// Blocks normal WASD (direction/jump) and forces hook state from UpdateFlyRide.
+	// Silent aim is already set via m_LaserUnfreezeAimActive (consumed above at line ~543).
+	if(g_Config.m_KxFlyRide)
+	{
+		m_aInputData[g_Config.m_ClDummy].m_Direction = GameClient()->m_BotNet.m_FlyRidePilotDir;
+		m_aInputData[g_Config.m_ClDummy].m_Jump = 0; // block W (jump) — W moves anchor instead
+		m_aInputData[g_Config.m_ClDummy].m_Hook = GameClient()->m_BotNet.m_FlyRidePilotHook;
+	}
+
+	// ── Fake Aim ──────────────────────────────────────────────
+	m_FakeAimRenderActive = false;
+	bool fakeActive = false;
+	vec2 fakeOffset(0, 0);
+	bool fakeShowForMe = false;
+
+	// v1.56.209: Show For Me flicker fix.
+	// Background — why this is needed:
+	//   m_FakeAimRenderOffset is updated only here, once per SnapInput (~50 Hz).
+	//   m_aMousePos is updated every frame in OnRender (~60-144 Hz).
+	//   players.cpp picks m_FakeAimRenderOffset when m_FakeAimRenderActive is true,
+	//   otherwise it falls through to m_aMousePos (live mouse).
+	//
+	//   On a release tick (laser/aimbot/avoid/pfgo owns the aim, OR
+	//   willFire/hookPress), the fake block is either skipped (so
+	//   m_FakeAimRenderActive stays false) or sets fakeOffset = realAim
+	//   (so m_FakeAimRenderOffset == realAim). In both cases players.cpp
+	//   ends up showing the real aim — for 1-3 frames until the next
+	//   SnapInput restores the mask.
+	//
+	// Fix: remember the last "real" fake offset and hold it across
+	// release ticks. The actual aim going to the server (m_aInputData /
+	// pData) is unchanged — only the rendered character angle is held.
+	static vec2 s_LastFakeRenderOffset = vec2(0, 0);
+	static bool s_HaveLastFake = false;
+
+	// Fire/hook detection + robot update — ALWAYS runs (even when laser unfreeze active)
+	bool willFire = false;
+	bool hookPress = false;
+	vec2 realAim = m_aMousePos[g_Config.m_ClDummy];
+
+	// Robot frozen aim — declared OUTSIDE if block so generation can access it
+	static vec2 s_RobotAim = vec2(0, 0);
+	static bool s_RobotInit = false;
+
+	if(g_Config.m_KxFakeAim)
+	{
+		// Detect weapon fire via 1-tick prediction.
+		// This catches EVERY real shot (not just the rising edge of
+		// m_Fire), which is what the aim-release system needs: while
+		// the player holds fire, the server fires on the weapon's
+		// reload cadence, and we must release the fake aim on each
+		// of those ticks so the shot lands. A parity rising-edge
+		// only catches the first press and breaks Random/Spin/Lag.
+		//
+		// Cost: one full CGameWorld CopyWorld per SnapInput (~50/sec).
+		// This is cheap in practice — CopyWorld on the stack is
+		// allocation+free of the world's entities, no leak (the
+		// stack CGameWorld destructor runs Clear() which deletes
+		// every entity it owns). The FPS collapse in v1.56.55 was
+		// caused by the RemoveEntity leak in laser_unfreeze.cpp,
+		// NOT by this prediction. That leak is fixed in v1.56.56.
+		CGameClient *pGC = GameClient();
+		if(pGC && pGC->m_Snap.m_pLocalInfo)
+		{
+			int LocalID = pGC->m_Snap.m_LocalClientId;
+			CCharacter *pChar = pGC->m_PredictedWorld.GetCharacterById(LocalID);
+			if(pChar)
+			{
+				int tickBefore = pChar->GetAttackTick();
+				bool wasFrozen = (pChar->m_FreezeTime > 0) || pChar->Core()->m_DeepFrozen;
+				CGameWorld FutureWorld;
+				FutureWorld.CopyWorld(&pGC->m_PredictedWorld);
+				CCharacter *pFuture = FutureWorld.GetCharacterById(LocalID);
+				if(pFuture)
+				{
+					CNetObj_PlayerInput FutureInput = m_aInputData[g_Config.m_ClDummy];
+					pFuture->OnDirectInput(&FutureInput);
+					FutureWorld.m_GameTick = FutureWorld.GameTick() + 1;
+					pFuture->OnPredictedInput(&FutureInput);
+					FutureWorld.Tick();
+					if(CCharacter *pAfter = FutureWorld.GetCharacterById(LocalID))
+					{
+						if(pAfter->GetAttackTick() != tickBefore)
+							willFire = true;
+						// v1.56.103: Emulate freeze state in prediction.
+						// If player was frozen and will unfreeze next tick,
+						// treat as willFire so fake aim releases correctly.
+						if(wasFrozen && pAfter->m_FreezeTime == 0 && !pAfter->Core()->m_DeepFrozen)
+							willFire = true;
+					}
+				}
+			}
+		}
+
+		// Hook press edge
+		static int s_LastHook = 0;
+		hookPress = (m_aInputData[g_Config.m_ClDummy].m_Hook != 0 && s_LastHook == 0);
+		s_LastHook = m_aInputData[g_Config.m_ClDummy].m_Hook;
+
+		// Robot/Lag: remember last real aim.
+		//
+		// SILENT Laser Unfreeze case: when laserAimActive is true,
+		// Laser Unfreeze is firing at the BOUNCE position
+		// (m_LaserUnfreezeAimOffset), but in silent mode it did NOT
+		// move the visible crosshair (m_aMousePos). So realAim is
+		// still the player's visible aim, NOT where the laser fired.
+		// Storing realAim here would make Robot/Lag remember the
+		// wrong position. Use the laser's bounce offset instead —
+		// it's the actual aim that was sent to the server this tick.
+		//
+		// Non-silent laser: SetMousePos already moved m_aMousePos to
+		// the bounce before SnapInput, so realAim == bounce and
+		// using realAim is correct (laserAimActive path is skipped
+		// via the guard below anyway).
+		if(!s_RobotInit)
+		{
+			s_RobotAim = realAim;
+			s_RobotInit = true;
+		}
+		if(willFire || hookPress)
+		{
+			if(laserAimActive)
+				s_RobotAim = m_LaserUnfreezeAimOffset;
+			else if(GameClient()->m_BotNet.m_PfGoAimedThisTick)
+				s_RobotAim = GameClient()->m_BotNet.m_PfGoAimOffset;
+			else
+				s_RobotAim = realAim;
+		}
+	}
+
+	// Fake aim generation — skipped when laser unfreeze active (laser has priority)
+	// v1.56.204: skipped when PfGo applied aim this tick (hook rising edge),
+	// but otherwise Fake Aim can coexist with PfGo playback.
+	if(g_Config.m_KxFakeAim && !laserAimActive && !GameClient()->m_BotNet.m_PfGoAimedThisTick)
+	{
+		// Decide: real or fake
+		if(willFire || hookPress)
+		{
+			fakeActive = true;
+			fakeOffset = realAim;
+			fakeShowForMe = true;
+		}
+		else
+		{
+			int mode = g_Config.m_KxFakeAimMode;
+			int speed = g_Config.m_KxFakeAimSpeed;
+			if(speed < 1)
+				speed = 1;
+			if(speed > 100)
+				speed = 100;
+			constexpr float AIM_DIST = 200.0f;
+
+			if(mode == 0) // Random
+			{
+				static int s_TickCounter = 0;
+				static float s_RandAngle = 0.0f;
+				s_TickCounter++;
+				if(s_TickCounter >= speed)
+				{
+					s_RandAngle = ((float)rand() / (float)RAND_MAX) * pi * 2.0f;
+					s_TickCounter = 0;
+				}
+				fakeOffset = vec2(cosf(s_RandAngle), sinf(s_RandAngle)) * AIM_DIST;
+			}
+			else if(mode == 1) // Robot
+			{
+				fakeOffset = s_RobotAim;
+			}
+			else if(mode == 3) // Lag
+			{
+				static int s_LagCounter = 0;
+				s_LagCounter++;
+				if(s_LagCounter >= speed)
+				{
+					s_RobotAim = realAim;
+					s_LagCounter = 0;
+				}
+				fakeOffset = s_RobotAim;
+			}
+			else // Spin
+			{
+				static float s_SpinAngle = 0.0f;
+				s_SpinAngle += (speed / 100.0f) * 0.5f;
+				fakeOffset = vec2(cosf(s_SpinAngle), sinf(s_SpinAngle)) * AIM_DIST;
+			}
+
+			fakeActive = true;
+			fakeShowForMe = g_Config.m_KxFakeAimShowForMe != 0;
+		}
+	}
+
+	// ── Apply fake aim override (lower priority than laser unfreeze) ──
+	if(fakeActive)
+	{
+		// Render data for players.cpp
+		m_FakeAimRenderActive = true;
+		m_FakeAimRenderOffset = fakeOffset;
+
+		if(fakeShowForMe)
+		{
+			// Show for me ON: set in m_aInputData (server + prediction)
+			m_aInputData[g_Config.m_ClDummy].m_TargetX = (int)fakeOffset.x;
+			m_aInputData[g_Config.m_ClDummy].m_TargetY = (int)fakeOffset.y;
+		}
+		// else: don't touch m_aInputData — prediction keeps real aim.
+		//       pData modified after mem_copy for server-only fake.
+	}
+
 	m_LastSendTime = time_get();
 	mem_copy(pData, &m_aInputData[g_Config.m_ClDummy], sizeof(m_aInputData[0]));
+
+	// Fake Aim show for me = OFF: modify pData AFTER mem_copy.
+	// Server gets fake, local prediction keeps real aim.
+	if(fakeActive && !fakeShowForMe)
+	{
+		CNetObj_PlayerInput *pSend = (CNetObj_PlayerInput *)pData;
+		pSend->m_TargetX = (int)fakeOffset.x;
+		pSend->m_TargetY = (int)fakeOffset.y;
+	}
+
+	// v1.56.209: Hold the fake mask across release ticks.
+	// See the long comment near s_LastFakeRenderOffset declaration above
+	// for the full explanation. Short version:
+	//   - If this tick is a release (another component owns the aim, OR
+	//     player is firing / pressing hook), the mask has just dropped.
+	//   - Restore it from the last "real" fake offset so players.cpp keeps
+	//     drawing the spoofed direction instead of falling through to the
+	//     live m_aMousePos.
+	// The aim actually sent to the server (m_aInputData / pData) is not
+	// touched here — this only affects the rendered character angle.
+	if(g_Config.m_KxFakeAim && s_HaveLastFake)
+	{
+		// Figure out whether this tick is a release tick.
+		bool aimOwnedByComponent = laserAimActive || GameClient()->m_BotNet.m_PfGoAimedThisTick;
+		bool aimOwnedByPlayerFire = fakeActive && (willFire || hookPress);
+		bool isReleaseTick = aimOwnedByComponent || aimOwnedByPlayerFire;
+
+		if(isReleaseTick)
+		{
+			// Keep the mask: render the previous fake direction.
+			m_FakeAimRenderActive = true;
+			m_FakeAimRenderOffset = s_LastFakeRenderOffset;
+		}
+	}
+
+	// Remember the current fake offset for next tick's mask continuation.
+	// Only update from genuine fake ticks — not from release ticks where
+	// fakeOffset happens to be realAim (willFire/hookPress) — otherwise
+	// we'd poison the mask with the real aim and the fix would be useless.
+	if(fakeActive && !laserAimActive && !GameClient()->m_BotNet.m_PfGoAimedThisTick &&
+		!willFire && !hookPress)
+	{
+		s_LastFakeRenderOffset = fakeOffset;
+		s_HaveLastFake = true;
+	}
+
 	return sizeof(m_aInputData[0]);
 }
 

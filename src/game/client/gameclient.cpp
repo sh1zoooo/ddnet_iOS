@@ -137,7 +137,14 @@ void CGameClient::OnConsoleInit()
 					      &m_Items,
 					      &m_Ghost,
 					      &m_Players,
+					      &m_BotNet, // Kinetix: world-space renders (Pathfinder, Show Path) draw on top of the map
+					      &m_AimBot, // Kinetix: AimBot/TriggerBot rendering (FOV/Radius circles)
+					      &m_BotControl, // Kinetix: dummy bot control
+					      &m_BasicAvoidFreeze, // Kinetix: Basic Avoid Freeze - override input to avoid freeze
+					      &m_Esp, // Kinetix: ESP lines (Layer 0 = behind fg blocks; Layer>0 deferred to m_KinetixLines)
+					      &m_Trajectory, // Kinetix: per-type trajectory prediction
 					      &m_MapLayersForeground,
+					      &m_KinetixLines, // Kinetix: deferred line overlay — renders AFTER fg map tiles (on top of blocks)
 					      &m_Particles.m_RenderExplosions,
 					      &m_NamePlates,
 					      &m_Particles.m_RenderExtra,
@@ -157,6 +164,7 @@ void CGameClient::OnConsoleInit()
 					      &m_Scoreboard,
 					      &m_Statboard,
 					      &m_Motd,
+					      &m_ClickGui,
 					      &m_Menus,
 					      &m_Tooltips,
 					      &m_KeyBinder,
@@ -174,6 +182,7 @@ void CGameClient::OnConsoleInit()
 						  &m_Emoticon,
 						  &m_ImportantAlert,
 						  &m_Menus,
+						  &m_ClickGui, // consume clicks/keys when ClickGUI is open
 						  &m_Controls,
 						  &m_TouchControls,
 						  &m_Binds});
@@ -538,18 +547,26 @@ int CGameClient::OnSnapInput(int *pData, bool Dummy, bool Force)
 
 	if(!g_Config.m_ClDummyHammer)
 	{
-		if(m_DummyFire != 0)
+		// Kinetix: the botnet/bot control drives the inactive dummy through
+		// m_aDummyInput[slot]. While a Kinetix bot is active on that slot, route
+		// it to the dummy connection and always send (the standard path would
+		// drop ticks with no direction/jump/hook).
+		const int KxSlot = !g_Config.m_ClDummy;
+		const bool KxDrives = m_BotNet.IsDummyActive(KxSlot) || m_BotControl.IsBotActiveAny(KxSlot);
+		CNetObj_PlayerInput *pDummySource = KxDrives ? &m_aDummyInput[KxSlot] : &m_DummyInput;
+
+		if(!KxDrives && m_DummyFire != 0)
 		{
 			m_DummyInput.m_Fire = (m_HammerInput.m_Fire + 1) & ~1;
 			m_DummyFire = 0;
 		}
 
-		if(!Force && (!m_DummyInput.m_Direction && !m_DummyInput.m_Jump && !m_DummyInput.m_Hook))
+		if(!KxDrives && !Force && (!pDummySource->m_Direction && !pDummySource->m_Jump && !pDummySource->m_Hook))
 		{
 			return 0;
 		}
 
-		mem_copy(pData, &m_DummyInput, sizeof(m_DummyInput));
+		mem_copy(pData, pDummySource, sizeof(m_DummyInput));
 		return sizeof(m_DummyInput);
 	}
 	else
