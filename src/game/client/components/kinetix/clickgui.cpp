@@ -1242,6 +1242,14 @@ void CClickGui::OnReset()
         m_DropdownOpen = false;
         m_InputEditing = false;
         Input()->StopTextInput();
+        // v1.56.220 (iOS): reset touch gesture state.
+        m_TouchArmed = false;
+        m_TouchActive = false;
+        m_TouchPosValid = false;
+        m_TouchDeferred = false;
+        m_TouchScrolling = false;
+        m_TouchScrollPanel = -1;
+        m_TouchHoldover = false;
         for(int i = 0; i < NUM_PANELS; ++i)
         {
                 m_aOffscreenValid[i] = false;
@@ -1274,12 +1282,22 @@ void CClickGui::OnRender()
         m_UiScale = (physH > 0.0f) ? (physH / 1080.0f) : 1.0f;
 
         // Mouse position in virtual units (physical px / scale).
-        m_MousePos = Input()->NativeMousePos() / m_UiScale;
+        // v1.56.220 (iOS): while a finger is tracked, it drives the position.
+        m_MousePos = m_TouchPosValid ? m_TouchPos : Input()->NativeMousePos() / m_UiScale;
 
         // Detect transition 0->1 (opening): pick fresh random offscreen positions
         // for each panel and initialize panel positions to home (if first open).
         if(isOpen && !m_WasOpen)
         {
+                // v1.56.220 (iOS): fresh gesture state on open. The menu is not armed
+                // until all fingers have been lifted once (ignores the kx_menu finger).
+                m_TouchArmed = false;
+                m_TouchActive = false;
+                m_TouchPosValid = false;
+                m_TouchDeferred = false;
+                m_TouchScrolling = false;
+                m_TouchScrollPanel = -1;
+                m_TouchMoved = false;
                 const float sw = VScreenWidth();
                 const float sh = VScreenHeight();
                 for(int i = 0; i < NUM_PANELS; ++i)
@@ -2715,6 +2733,229 @@ bool CClickGui::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
                 return true;
         }
         return false;
+}
+
+// ============================================================================
+// CClickGui — touch input (iOS). v1.56.220
+// ============================================================================
+
+vec2 CClickGui::TouchVirtualPos(const IInput::CTouchFingerState &FingerState) const
+{
+        // Finger positions are normalized (0..1) over the window. Convert to
+        // physical pixels, then into the virtual 1920x1080 layout space.
+        const vec2 phys = vec2(
+                FingerState.m_Position.x * (float)Graphics()->ScreenWidth(),
+                FingerState.m_Position.y * (float)Graphics()->ScreenHeight());
+        return phys / (m_UiScale > 0.0f ? m_UiScale : 1.0f);
+}
+
+bool CClickGui::OnTouchState(const std::vector<IInput::CTouchFingerState> &vTouchFingerStates)
+{
+        // Consume ALL touches while the ClickGUI is open (or animating closed) so
+        // the game's touch controls stay inert behind the overlay.
+        const bool active = g_Config.m_ClClickGui != 0 || m_AnimProgress > 0.0f;
+        if(!active)
+        {
+                if(m_TouchActive)
+                {
+                        // The menu closed while a finger was down (free-area tap or
+                        // kx_menu 0): end the gesture, then keep swallowing touches
+                        // until every finger is lifted so the closing tap cannot leak
+                        // into the game's touch controls.
+                        m_TouchHoldover = true;
+                        m_TouchActive = false;
+                        m_TouchPosValid = false;
+                        m_TouchDeferred = false;
+                        m_TouchScrolling = false;
+                        m_TouchScrollPanel = -1;
+                        HandleMouseUp(m_TouchPos);
+                }
+                if(m_TouchHoldover && !vTouchFingerStates.empty())
+                        return true;
+                m_TouchHoldover = false;
+                return false;
+        }
+
+        if(vTouchFingerStates.empty())
+        {
+                m_TouchArmed = true;
+                if(m_TouchActive)
+                        TouchRelease();
+                return true;
+        }
+
+        // Update or drop the tracked finger.
+        if(m_TouchActive)
+        {
+                const IInput::CTouchFingerState *pTracked = nullptr;
+                for(const IInput::CTouchFingerState &FingerState : vTouchFingerStates)
+                {
+                        if(FingerState.m_Finger == m_TouchFinger)
+                        {
+                                pTracked = &FingerState;
+                                break;
+                        }
+                }
+                if(pTracked == nullptr)
+                {
+                        // Tracked finger lifted (other fingers may remain).
+                        TouchRelease();
+                }
+                else
+                {
+                        m_TouchPos = TouchVirtualPos(*pTracked);
+                        m_TouchPosValid = true;
+                        TouchMove();
+                }
+        }
+
+        // New press: only when armed (all fingers lifted at least once since the
+        // menu opened) and the open animation has finished.
+        if(!m_TouchActive && m_TouchArmed && g_Config.m_ClClickGui != 0 && m_AnimProgress >= 0.95f)
+        {
+                // Track the oldest finger (front of the vector).
+                const IInput::CTouchFingerState &FingerState = vTouchFingerStates.front();
+                m_TouchActive = true;
+                m_TouchFinger = FingerState.m_Finger;
+                m_TouchPos = TouchVirtualPos(FingerState);
+                m_TouchPosValid = true;
+                m_TouchDownPos = m_TouchPos;
+                m_TouchMoved = false;
+                m_TouchDeferred = false;
+                m_TouchScrolling = false;
+                m_TouchScrollPanel = -1;
+                m_TouchArmed = false;
+                TouchPress();
+        }
+
+        return true;
+}
+
+void CClickGui::TouchPress()
+{
+        const vec2 p = m_TouchDownPos;
+
+        // Dropdown popup sits on top of everything: taps select an option or close
+        // the popup (click-outside), matching the desktop behavior.
+        if(m_DropdownOpen)
+        {
+                HandleMouseDown(p);
+                HandleMouseUp(p);
+                return;
+        }
+
+        // Iterate panels top-to-bottom (high z first), like HandleMouseDown.
+        int order[NUM_PANELS];
+        for(int i = 0; i < NUM_PANELS; ++i)
+                order[i] = i;
+        for(int a = 0; a < NUM_PANELS; ++a)
+                for(int b = a + 1; b < NUM_PANELS; ++b)
+                        if(m_aZOrder[order[b]] > m_aZOrder[order[a]])
+                        {
+                                int tmp = order[a];
+                                order[a] = order[b];
+                                order[b] = tmp;
+                        }
+
+        for(int idx = 0; idx < NUM_PANELS; ++idx)
+        {
+                const int i = order[idx];
+                const vec2 ppos = m_aPanelPosValid[i] ? m_aPanelPos[i] : PanelHomePos(i);
+                const float panelH = (m_aPanelCurrentHeight[i] > HEADER_HEIGHT) ? m_aPanelCurrentHeight[i] : HEADER_HEIGHT;
+
+                if(!PointInRect(p, ppos.x, ppos.y, PANEL_WIDTH, panelH))
+                        continue;
+
+                // Header: immediate press (panel drag follows the finger; the
+                // collapse arrow toggles right away).
+                if(PointInRect(p, ppos.x, ppos.y, PANEL_WIDTH, HEADER_HEIGHT))
+                {
+                        HandleMouseDown(p);
+                        return;
+                }
+
+                // Body: hit-test the row under the finger.
+                int outRow, outChild;
+                float rx, ry, rw, rh;
+                if(HitTestRow(p, i, outRow, outChild, rx, ry, rw, rh))
+                {
+                        SRow &row = g_Panels[i].pRows[outRow];
+                        SRow *pTarget = (outChild >= 0 && row.pChildren) ? &row.pChildren[outChild] : &row;
+
+                        if(pTarget->type == ERowType::Slider)
+                        {
+                                // Slider: immediate press — the value jumps to the finger
+                                // and keeps following it while dragging.
+                                HandleMouseDown(p);
+                                return;
+                        }
+                        if(pTarget->type == ERowType::Input)
+                        {
+                                // Input box: immediate press when inside the box (opens the
+                                // keyboard); the label area stays scrollable.
+                                const float nameW = std::min(88.0f, TextRender()->TextWidth(17.0f, pTarget->pName) + 5.0f);
+                                if(PointInRect(p, rx + nameW + 2.0f, ry + 2.0f, rw - nameW - 4.0f, rh - 4.0f))
+                                {
+                                        HandleMouseDown(p);
+                                        return;
+                                }
+                        }
+                }
+
+                // Everything else in the body (toggles, buttons, expandables, gaps):
+                // defer the activation to the release so a drag can turn into a
+                // scroll instead of toggling the row it started on.
+                m_TouchDeferred = true;
+                m_TouchScrollPanel = i;
+                return;
+        }
+
+        // Free part of the screen: hide the menu.
+        g_Config.m_ClClickGui = 0;
+}
+
+void CClickGui::TouchMove()
+{
+        if(!m_TouchMoved && length(m_TouchPos - m_TouchDownPos) > TAP_MAX_MOVEMENT)
+        {
+                m_TouchMoved = true;
+                if(m_TouchDeferred)
+                {
+                        // The drag turns into a scroll gesture.
+                        m_TouchDeferred = false;
+                        m_TouchScrolling = true;
+                        m_TouchScrollStart = (m_TouchScrollPanel >= 0) ? m_aPanelScrollStored[m_TouchScrollPanel] : 0.0f;
+                }
+        }
+
+        if(m_TouchScrolling && m_TouchScrollPanel >= 0)
+        {
+                // Content follows the finger: scrolling grows when the finger moves up.
+                float &stored = m_aPanelScrollStored[m_TouchScrollPanel];
+                stored = m_TouchScrollStart + (m_TouchDownPos.y - m_TouchPos.y);
+                if(stored < 0.0f)
+                        stored = 0.0f;
+        }
+}
+
+void CClickGui::TouchRelease()
+{
+        // Deferred tap (press + release inside the slop radius): activate the row
+        // at the position where the finger went down.
+        if(m_TouchDeferred && !m_TouchMoved)
+        {
+                HandleMouseDown(m_TouchDownPos);
+                HandleMouseUp(m_TouchDownPos);
+        }
+
+        m_TouchActive = false;
+        m_TouchPosValid = false;
+        m_TouchDeferred = false;
+        m_TouchScrolling = false;
+        m_TouchScrollPanel = -1;
+
+        // End drags started by immediate presses (panel drag, slider drag).
+        HandleMouseUp(m_TouchPos);
 }
 
 void CClickGui::BringToFront(int panelIdx)

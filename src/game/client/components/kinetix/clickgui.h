@@ -46,6 +46,7 @@ public:
         void OnRender() override;
         bool OnInput(const IInput::CEvent &Event) override;
         bool OnCursorMove(float x, float y, IInput::ECursorType CursorType) override;
+        bool OnTouchState(const std::vector<IInput::CTouchFingerState> &vTouchFingerStates) override;
 
         static constexpr int NUM_PANELS = 6;
 
@@ -145,6 +146,27 @@ private:
 
         // Mouse position in screen-space px (updated each frame from NativeMousePos).
         vec2 m_MousePos = vec2(0, 0);
+
+        // v1.56.220 (iOS): touch input state. While the menu is open ALL touches
+        // are consumed (the game's touch controls stay inert behind the overlay)
+        // and the oldest finger drives the cursor. A tap on a free part of the
+        // screen (outside every panel) closes the menu. A press only counts after
+        // every finger has been lifted at least once while the menu is open, so
+        // the finger that opened the menu via a bound `kx_menu` button is ignored.
+        bool m_TouchArmed = false; // empty-fingers frame seen while menu open
+        bool m_TouchActive = false; // primary finger currently tracked
+        IInput::CTouchFinger m_TouchFinger{}; // identity of the tracked finger
+        vec2 m_TouchPos = vec2(0, 0); // tracked finger position (virtual units)
+        bool m_TouchPosValid = false; // m_TouchPos overrides NativeMousePos
+        vec2 m_TouchDownPos = vec2(0, 0); // where the finger went down
+        bool m_TouchMoved = false; // moved beyond tap slop since press
+        bool m_TouchDeferred = false; // click-row press deferred until release
+        bool m_TouchScrolling = false; // drag-scroll gesture active
+        int m_TouchScrollPanel = -1; // panel being drag-scrolled
+        float m_TouchScrollStart = 0.0f; // scroll offset when the gesture started
+        bool m_TouchHoldover = false; // menu closed under a finger: swallow until release
+        // Max movement (virtual units) for press+release to count as a tap.
+        static constexpr float TAP_MAX_MOVEMENT = 14.0f;
 
         // v1.56.212: DPI-independent UI scale. The whole ClickGUI is laid out in
         // a virtual 1920x1080 coordinate space; m_UiScale maps physical pixels to
@@ -275,6 +297,11 @@ private:
         // UX event handling (called from OnInput / OnCursorMove).
         void HandleMouseDown(vec2 mousePos);
         void HandleMouseUp(vec2 mousePos);
+        // v1.56.220 (iOS): touch UX (called from OnTouchState).
+        void TouchPress(); // primary finger went down
+        void TouchMove(); // tracked finger moved
+        void TouchRelease(); // tracked finger lifted (or menu closed)
+        vec2 TouchVirtualPos(const IInput::CTouchFingerState &FingerState) const;
 
         // Find which row a click hit. Returns row/child indices via out-params.
         // panelIdx is an input (which panel to test). Returns true if a row was hit.
