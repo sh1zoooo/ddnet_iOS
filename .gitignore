@@ -145,3 +145,6 @@ tags
 *.user
 *.vcxproj
 *.zip
+
+# Kinetix: vendored yoga has a real debug/ source directory
+!src/engine/external/yoga/debug/
