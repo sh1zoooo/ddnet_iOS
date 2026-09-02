@@ -580,8 +580,10 @@ protected:
 	void RenderSkinPartSelection7(CUIRect MainView);
 	void RenderSettingsGraphics(CUIRect MainView);
 	void RenderSettingsSound(CUIRect MainView);
-	void RenderSettingsTouch(CUIRect MainView);
-	void RenderSettingsSh1zooo(CUIRect MainView);
+	void RenderSettingsKinetix(CUIRect MainView);
+	void RenderKinetixTouchSection(CUIRect &MainView, CScrollRegion *pScrollRegion);
+	void RenderKinetixAutoFinishSection(CUIRect &MainView, CScrollRegion *pScrollRegion);
+	void RenderKinetixTagsSection(CUIRect &MainView, CScrollRegion *pScrollRegion, const CUIRect &ScrollClipRect);
 	void RenderSettings(CUIRect MainView);
 	void RenderSettingsCustom(CUIRect MainView);
 
@@ -688,8 +690,7 @@ public:
 		SETTINGS_SOUND,
 		SETTINGS_DDNET,
 		SETTINGS_ASSETS,
-		SETTINGS_TOUCH,
-		SETTINGS_SH1ZOOO,
+		SETTINGS_KINETIX,
 
 		SETTINGS_LENGTH,
 	};

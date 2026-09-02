@@ -38,6 +38,13 @@
 #include <string>
 #include <vector>
 
+// Kinetix client tab: shared palette, mirrors the Kinetix ClickGUI look.
+static const ColorRGBA gs_KinetixAccent = ColorRGBA(0x9d / 255.0f, 0x4e / 255.0f, 0xdd / 255.0f, 1.0f);
+static const ColorRGBA gs_KinetixPanelBg = ColorRGBA(0.07f, 0.07f, 0.115f, 0.62f);
+static const ColorRGBA gs_KinetixPanelBorder = ColorRGBA(0x2a / 255.0f, 0x2a / 255.0f, 0x3e / 255.0f, 0.85f);
+static const ColorRGBA gs_KinetixRowText = ColorRGBA(0xd8 / 255.0f, 0xd8 / 255.0f, 0xe8 / 255.0f, 1.0f);
+static const ColorRGBA gs_KinetixCheckBg = ColorRGBA(0x28 / 255.0f, 0x28 / 255.0f, 0x34 / 255.0f, 1.0f);
+
 using namespace std::chrono_literals;
 
 void CMenus::RenderSettingsGeneral(CUIRect MainView)
@@ -1324,47 +1331,124 @@ void CMenus::RenderSettingsSound(CUIRect MainView)
 	}
 }
 
-void CMenus::RenderSettingsTouch(CUIRect MainView)
+void CMenus::RenderSettingsKinetix(CUIRect MainView)
 {
-	CUIRect Button;
+	// ---- header (Kinetix ClickGUI style) ------------------------------------
+	{
+		CUIRect Head, Chip, Title;
+		MainView.HSplitTop(34.0f, &Head, &MainView);
+		Head.VSplitLeft(Head.h, &Chip, &Title);
+		Title.VSplitLeft(12.0f, nullptr, &Title);
+		Chip.Draw(gs_KinetixPanelBorder, IGraphics::CORNER_ALL, 10.0f);
+		CUIRect ChipIn;
+		Chip.Margin(1.5f, &ChipIn);
+		ChipIn.Draw(gs_KinetixAccent, IGraphics::CORNER_ALL, 9.0f);
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 0.95f);
+		Ui()->DoLabel(&ChipIn, "K", 19.0f, TEXTALIGN_MC);
+		TextRender()->TextColor(TextRender()->DefaultTextColor());
+		Ui()->DoLabel(&Title, "Kinetix client", 24.0f, TEXTALIGN_ML);
+	}
 
-	MainView.HSplitTop(20.0f, &Button, &MainView);
-	Ui()->DoLabel(&Button, Localize("Touch controls"), 20.0f, TEXTALIGN_ML);
+	MainView.HSplitTop(5.0f, nullptr, &MainView);
+	{
+		CUIRect Sub;
+		MainView.HSplitTop(12.0f, &Sub, &MainView);
+		TextRender()->TextColor(0.48f, 0.50f, 0.55f, 1.0f);
+		Ui()->DoLabel(&Sub, "Touch controls, auto-finish and player tags in one place", 11.0f, TEXTALIGN_ML);
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+	}
 
-	MainView.HSplitTop(10.0f, nullptr, &MainView);
+	MainView.HSplitTop(12.0f, nullptr, &MainView);
 
+	// ---- one scroll region shared by every section ---------------------------
 	static CScrollRegion s_ScrollRegion;
+	const CUIRect ScrollClipRect = MainView;
 	vec2 ScrollOffset(0.0f, 0.0f);
 	CScrollRegionParams ScrollParams;
-	ScrollParams.m_ScrollUnit = 20.0f;
+	ScrollParams.m_ScrollUnit = 40.0f;
 	s_ScrollRegion.Begin(&MainView, &ScrollOffset, &ScrollParams);
 	MainView.y += ScrollOffset.y;
 
+	RenderKinetixTouchSection(MainView, &s_ScrollRegion);
+	RenderKinetixAutoFinishSection(MainView, &s_ScrollRegion);
+	RenderKinetixTagsSection(MainView, &s_ScrollRegion, ScrollClipRect);
+
+	s_ScrollRegion.End();
+}
+
+void CMenus::RenderKinetixTouchSection(CUIRect &MainView, CScrollRegion *pScrollRegion)
+{
+	CUIRect Button;
+
+	// ---- section header (Kinetix style: purple bar) --------------------------
+	{
+		CUIRect Head;
+		MainView.HSplitTop(26.0f, &Head, &MainView);
+		MainView.HSplitTop(10.0f, nullptr, &MainView);
+		pScrollRegion->AddRect(Head);
+		Head.Draw(gs_KinetixAccent, IGraphics::CORNER_ALL, 7.0f);
+		Head.VMargin(10.0f, &Head);
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 0.95f);
+		Ui()->DoLabel(&Head, "TOUCH CONTROLS", 12.0f, TEXTALIGN_ML);
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+
 	MainView.HSplitTop(20.0f, &Button, &MainView);
-	s_ScrollRegion.AddRect(Button);
+	pScrollRegion->AddRect(Button);
 	Ui()->DoScrollbarOption(&g_Config.m_ClTouchJoystickAimSensitivity, &g_Config.m_ClTouchJoystickAimSensitivity, &Button, Localize("Aim sensitivity (joystick)"), 1, 20000,
 		&CUi::ms_LogarithmicScrollbarScale, CUi::SCROLLBAR_OPTION_NOCLAMPVALUE);
 
 	MainView.HSplitTop(5.0f, nullptr, &MainView);
 	MainView.HSplitTop(16.0f, &Button, &MainView);
-	s_ScrollRegion.AddRect(Button);
+	pScrollRegion->AddRect(Button);
 	TextRender()->TextColor(0.7f, 0.7f, 0.7f, 1.0f);
 	Ui()->DoLabel(&Button, Localize("How far the aim moves per full swipe across the joystick button. Higher = more sensitive."), 12.0f, TEXTALIGN_ML);
 	TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+
+	// Kinetix-style toggle row: rounded square on the left, purple with a
+	// check mark when enabled.
+	const auto KinetixToggle = [&](const void *pId, const char *pLabel, int *pValue) {
+		CUIRect Row;
+		MainView.HSplitTop(28.0f, &Row, &MainView);
+		MainView.HSplitTop(2.0f, nullptr, &MainView);
+		pScrollRegion->AddRect(Row);
+		const bool Clicked = Ui()->DoButtonLogic(pId, 0, &Row, BUTTONFLAG_LEFT) != 0;
+		const bool Hot = Ui()->HotItem() == pId;
+		if(Clicked)
+			*pValue = *pValue ? 0 : 1;
+		Row.Draw(ColorRGBA(1.0f, 1.0f, 1.0f, Hot ? 0.05f : 0.02f), IGraphics::CORNER_ALL, 8.0f);
+		CUIRect Box, Label;
+		Row.VSplitLeft(28.0f, &Box, &Label);
+		Label.VSplitLeft(8.0f, nullptr, &Label);
+		Box.Margin(4.0f, &Box);
+		Box.Draw(gs_KinetixPanelBorder, IGraphics::CORNER_ALL, 6.0f);
+		CUIRect BoxIn;
+		Box.Margin(1.5f, &BoxIn);
+		BoxIn.Draw(*pValue ? gs_KinetixAccent : gs_KinetixCheckBg, IGraphics::CORNER_ALL, 5.0f);
+		if(*pValue)
+		{
+			TextRender()->TextColor(1.0f, 1.0f, 1.0f, 0.95f);
+			Ui()->DoLabel(&BoxIn, "\xE2\x9C\x93", 12.0f, TEXTALIGN_MC);
+			TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+		}
+		TextRender()->TextColor(gs_KinetixRowText);
+		Ui()->DoLabel(&Label, pLabel, 13.0f, TEXTALIGN_ML);
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+	};
 
 	// ---- touch button editor -----------------------------------------------
 	if(g_Config.m_ClTouchControls)
 	{
 		MainView.HSplitTop(16.0f, nullptr, &MainView);
 		MainView.HSplitTop(22.0f, &Button, &MainView);
-		s_ScrollRegion.AddRect(Button);
+		pScrollRegion->AddRect(Button);
 		{
 			CUIRect Icon, Title;
 			Button.VSplitLeft(Button.h + 8.0f, &Icon, &Title);
 			TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
 			const unsigned OldFlags = TextRender()->GetRenderFlags();
 			TextRender()->SetRenderFlags(OldFlags | TEXT_RENDER_FLAG_ONLY_ADVANCE_WIDTH | TEXT_RENDER_FLAG_NO_X_BEARING | TEXT_RENDER_FLAG_NO_Y_BEARING | TEXT_RENDER_FLAG_NO_PIXEL_ALIGNMENT | TEXT_RENDER_FLAG_NO_OVERSIZE);
-			TextRender()->TextColor(0.35f, 0.62f, 1.0f, 1.0f);
+			TextRender()->TextColor(gs_KinetixAccent);
 			Ui()->DoLabel(&Icon, FontIcon::PENCIL, 15.0f, TEXTALIGN_ML);
 			TextRender()->SetRenderFlags(OldFlags);
 			TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
@@ -1376,7 +1460,7 @@ void CMenus::RenderSettingsTouch(CUIRect MainView)
 		{
 			MainView.HSplitTop(6.0f, nullptr, &MainView);
 			MainView.HSplitTop(20.0f, &Button, &MainView);
-			s_ScrollRegion.AddRect(Button);
+			pScrollRegion->AddRect(Button);
 			static CButtonContainer s_EditTouchButtonsButton;
 			if(DoButton_Menu(&s_EditTouchButtonsButton, Localize("Edit touch buttons"), 0, &Button))
 			{
@@ -1387,7 +1471,7 @@ void CMenus::RenderSettingsTouch(CUIRect MainView)
 			}
 			MainView.HSplitTop(2.0f, nullptr, &MainView);
 			MainView.HSplitTop(28.0f, &Button, &MainView);
-			s_ScrollRegion.AddRect(Button);
+			pScrollRegion->AddRect(Button);
 			TextRender()->TextColor(0.7f, 0.7f, 0.7f, 1.0f);
 			Ui()->DoLabel(&Button, Localize("Tap a button to edit it. Drag to move it; buttons push each other instead of overlapping. Press Done to save."), 12.0f, TEXTALIGN_ML);
 			TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -1396,24 +1480,27 @@ void CMenus::RenderSettingsTouch(CUIRect MainView)
 		{
 			MainView.HSplitTop(6.0f, nullptr, &MainView);
 			MainView.HSplitTop(20.0f, &Button, &MainView);
-			s_ScrollRegion.AddRect(Button);
+			pScrollRegion->AddRect(Button);
 			TextRender()->TextColor(0.6f, 0.6f, 0.6f, 1.0f);
 			Ui()->DoLabel(&Button, Localize("Join a game to edit the touch buttons."), 12.0f, TEXTALIGN_ML);
 			TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
 		}
 	}
 
+	static CButtonContainer s_JoystickMoveCheckBox;
+	static CButtonContainer s_JoystickMoveFloatCheckBox;
+
 	// ---- dynamic movement joystick ----------------------------------------
 	MainView.HSplitTop(16.0f, nullptr, &MainView);
 	MainView.HSplitTop(22.0f, &Button, &MainView);
-	s_ScrollRegion.AddRect(Button);
+	pScrollRegion->AddRect(Button);
 	{
 		CUIRect Icon, Title;
 		Button.VSplitLeft(Button.h + 8.0f, &Icon, &Title);
 		TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
 		const unsigned OldFlags = TextRender()->GetRenderFlags();
 		TextRender()->SetRenderFlags(OldFlags | TEXT_RENDER_FLAG_ONLY_ADVANCE_WIDTH | TEXT_RENDER_FLAG_NO_X_BEARING | TEXT_RENDER_FLAG_NO_Y_BEARING | TEXT_RENDER_FLAG_NO_PIXEL_ALIGNMENT | TEXT_RENDER_FLAG_NO_OVERSIZE);
-		TextRender()->TextColor(0.35f, 0.62f, 1.0f, 1.0f);
+		TextRender()->TextColor(gs_KinetixAccent);
 		Ui()->DoLabel(&Icon, FontIcon::ARROWS_LEFT_RIGHT, 15.0f, TEXTALIGN_ML);
 		TextRender()->SetRenderFlags(OldFlags);
 		TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
@@ -1422,29 +1509,17 @@ void CMenus::RenderSettingsTouch(CUIRect MainView)
 	}
 
 	MainView.HSplitTop(6.0f, nullptr, &MainView);
-	MainView.HSplitTop(20.0f, &Button, &MainView);
-	s_ScrollRegion.AddRect(Button);
-	static CButtonContainer s_JoystickMoveCheckBox;
-	if(DoButton_CheckBox(&s_JoystickMoveCheckBox, Localize("Use dynamic joystick instead of move buttons"), g_Config.m_ClTouchJoystickMove, &Button))
-	{
-		g_Config.m_ClTouchJoystickMove ^= 1;
-	}
+	KinetixToggle(&s_JoystickMoveCheckBox, Localize("Use dynamic joystick instead of move buttons"), &g_Config.m_ClTouchJoystickMove);
 
 	if(g_Config.m_ClTouchJoystickMove)
 	{
 		// Floating base: whether the joystick base follows the finger when it is dragged
 		// past the edge of the base, or stays where the finger touched down.
 		MainView.HSplitTop(6.0f, nullptr, &MainView);
-		MainView.HSplitTop(20.0f, &Button, &MainView);
-		s_ScrollRegion.AddRect(Button);
-		static CButtonContainer s_JoystickMoveFloatCheckBox;
-		if(DoButton_CheckBox(&s_JoystickMoveFloatCheckBox, Localize("Floating joystick base"), g_Config.m_ClTouchJoystickMoveFloat, &Button))
-		{
-			g_Config.m_ClTouchJoystickMoveFloat ^= 1;
-		}
+		KinetixToggle(&s_JoystickMoveFloatCheckBox, Localize("Floating joystick base"), &g_Config.m_ClTouchJoystickMoveFloat);
 		MainView.HSplitTop(2.0f, nullptr, &MainView);
 		MainView.HSplitTop(14.0f, &Button, &MainView);
-		s_ScrollRegion.AddRect(Button);
+		pScrollRegion->AddRect(Button);
 		TextRender()->TextColor(0.7f, 0.7f, 0.7f, 1.0f);
 		Ui()->DoLabel(&Button, g_Config.m_ClTouchJoystickMoveFloat ? Localize("On: the base follows your finger when you drag it past the edge.") : Localize("Off: the base stays where you touched, the stick clamps at the edge."),
 			12.0f, TEXTALIGN_ML);
@@ -1455,7 +1530,7 @@ void CMenus::RenderSettingsTouch(CUIRect MainView)
 		const float PreviewHeight = std::clamp(MainView.w / maximum(Graphics()->ScreenAspect(), 0.01f), 90.0f, 170.0f);
 		CUIRect Preview;
 		MainView.HSplitTop(PreviewHeight, &Preview, &MainView);
-		s_ScrollRegion.AddRect(Preview);
+		pScrollRegion->AddRect(Preview);
 		Preview.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.35f), IGraphics::CORNER_ALL, 8.0f);
 		CUIRect ScreenRect;
 		Preview.Margin(3.0f, &ScreenRect);
@@ -1465,10 +1540,10 @@ void CMenus::RenderSettingsTouch(CUIRect MainView)
 		Zone.y = ScreenRect.y + ScreenRect.h * g_Config.m_ClTouchJoystickMoveZoneY / 100.0f;
 		Zone.w = ScreenRect.w * g_Config.m_ClTouchJoystickMoveZoneW / 100.0f;
 		Zone.h = ScreenRect.h * g_Config.m_ClTouchJoystickMoveZoneH / 100.0f;
-		Zone.Draw(ColorRGBA(0.16f, 0.56f, 1.0f, 0.12f), IGraphics::CORNER_ALL, 5.0f);
+		Zone.Draw(gs_KinetixAccent.WithAlpha(0.12f), IGraphics::CORNER_ALL, 5.0f);
 		CUIRect ZoneBorder = Zone;
 		ZoneBorder.Margin(1.5f, &ZoneBorder);
-		ZoneBorder.Draw(ColorRGBA(0.16f, 0.56f, 1.0f, 0.35f), IGraphics::CORNER_ALL, 5.0f);
+		ZoneBorder.Draw(gs_KinetixAccent.WithAlpha(0.35f), IGraphics::CORNER_ALL, 5.0f);
 
 		// Joystick illustration at the center of the zone.
 		const vec2 ZoneCenter = Zone.Center();
@@ -1488,7 +1563,7 @@ void CMenus::RenderSettingsTouch(CUIRect MainView)
 		const auto JoystickSlider = [&](int *pValue, const char *pLabel, int Min, int Max) {
 			MainView.HSplitTop(5.0f, nullptr, &MainView);
 			MainView.HSplitTop(20.0f, &Button, &MainView);
-			s_ScrollRegion.AddRect(Button);
+			pScrollRegion->AddRect(Button);
 			Ui()->DoScrollbarOption(pValue, pValue, &Button, pLabel, Min, Max, &CUi::ms_LinearScrollbarScale, 0u, "%");
 		};
 		JoystickSlider(&g_Config.m_ClTouchJoystickMoveZoneX, Localize("Zone position (left)"), 0, 100);
@@ -1499,13 +1574,11 @@ void CMenus::RenderSettingsTouch(CUIRect MainView)
 
 		MainView.HSplitTop(6.0f, nullptr, &MainView);
 		MainView.HSplitTop(16.0f, &Button, &MainView);
-		s_ScrollRegion.AddRect(Button);
+		pScrollRegion->AddRect(Button);
 		TextRender()->TextColor(0.7f, 0.7f, 0.7f, 1.0f);
 		Ui()->DoLabel(&Button, Localize("Touch inside the zone and the joystick appears under your finger. Drag it left and right to move."), 12.0f, TEXTALIGN_ML);
 		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
 	}
-
-	s_ScrollRegion.End();
 }
 
 void CMenus::RenderLanguageSettings(CUIRect MainView)
@@ -1599,7 +1672,7 @@ bool CMenus::RenderLanguageSelection(CUIRect MainView)
 	return s_ListBox.WasItemActivated();
 }
 
-void CMenus::RenderSettingsSh1zooo(CUIRect MainView)
+void CMenus::RenderKinetixTagsSection(CUIRect &MainView, CScrollRegion *pScrollRegion, const CUIRect &ScrollClipRect)
 {
 	// ---- helpers ----------------------------------------------------------
 	// Frame-rate independent exponential approach (ease-out).
@@ -1664,7 +1737,6 @@ void CMenus::RenderSettingsSh1zooo(CUIRect MainView)
 	static CButtonContainer s_TeamTagButton;
 	static CButtonContainer s_RemoveTagButton;
 	static CButtonContainer s_aRowButtons[MAX_CLIENTS];
-	static CScrollRegion s_ScrollRegion;
 
 	float Dt = 0.016f;
 	const auto Now = time_get_nanoseconds();
@@ -1721,54 +1793,26 @@ void CMenus::RenderSettingsSh1zooo(CUIRect MainView)
 	const float BodyFullHeight = 8.0f + 28.0f * 2.0f + 8.0f + (NumPlayers > 0 ? 24.0f : 0.0f) + ListHeight + 8.0f;
 	const float BodyHeight = BodyFullHeight * AccordionEase;
 
-	// ---- title ------------------------------------------------------------
-	CUIRect Button, Part;
-	MainView.HSplitTop(30.0f, &Button, &MainView);
-	{
-		const float NameWidth = TextRender()->TextWidth(22.0f, "sh1zooo");
-		Button.VSplitLeft(NameWidth + 2.0f, &Part, &Button);
-		Ui()->DoLabel(&Part, "sh1zooo", 22.0f, TEXTALIGN_ML);
-		TextRender()->TextColor(0.55f, 0.57f, 0.62f, 1.0f);
-		Ui()->DoLabel(&Button, " client", 22.0f, TEXTALIGN_ML);
-		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
-	}
-
-	MainView.HSplitTop(15.0f, &Button, &MainView);
-	TextRender()->TextColor(0.48f, 0.50f, 0.55f, 1.0f);
-	Ui()->DoLabel(&Button, "WAR / TEAM player tags and visual customization", 11.0f, TEXTALIGN_ML);
+	// ---- section header (Kinetix style: purple bar) ------------------------
+	CUIRect Button;
+	MainView.HSplitTop(26.0f, &Button, &MainView);
+	MainView.HSplitTop(10.0f, nullptr, &MainView);
+	pScrollRegion->AddRect(Button);
+	Button.Draw(gs_KinetixAccent, IGraphics::CORNER_ALL, 7.0f);
+	Button.VMargin(10.0f, &Button);
+	TextRender()->TextColor(1.0f, 1.0f, 1.0f, 0.95f);
+	Ui()->DoLabel(&Button, "PLAYERS (WAR / TEAM TAGS)", 12.0f, TEXTALIGN_ML);
 	TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
-
-	MainView.HSplitTop(14.0f, nullptr, &MainView);
-	MainView.HSplitTop(1.0f, &Button, &MainView);
-	Button.Draw(ColorRGBA(1.0f, 1.0f, 1.0f, 0.09f), IGraphics::CORNER_NONE, 0.0f);
-
-	MainView.HSplitTop(14.0f, nullptr, &MainView);
-	MainView.HSplitTop(16.0f, &Button, &MainView);
-	{
-		CUIRect SectionIcon;
-		Button.VSplitLeft(20.0f, &SectionIcon, &Button);
-		IconLabel(&SectionIcon, FontIcon::EYE, 12.0f, TEXTALIGN_ML, ColorRGBA(0.48f, 0.50f, 0.55f, 1.0f));
-		TextRender()->TextColor(0.48f, 0.50f, 0.55f, 1.0f);
-		Ui()->DoLabel(&Button, "VISUALS", 11.0f, TEXTALIGN_ML);
-		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
-	}
-
-	MainView.HSplitTop(8.0f, nullptr, &MainView);
-
-	// ---- scrollable area --------------------------------------------------
-	const CUIRect ScrollClipRect = MainView;
-	vec2 ScrollOffset(0.0f, 0.0f);
-	CScrollRegionParams ScrollParams;
-	ScrollParams.m_ScrollUnit = 40.0f;
-	s_ScrollRegion.Begin(&MainView, &ScrollOffset, &ScrollParams);
-	MainView.y += ScrollOffset.y;
 
 	// ---- war list accordion: container + header ---------------------------
 	const float ContainerPad = 5.0f;
 	CUIRect Container;
 	MainView.HSplitTop(ContainerPad * 2.0f + HeaderHeight + 6.0f + BodyHeight, &Container, &MainView);
-	s_ScrollRegion.AddRect(Container);
-	Container.Draw(ColorRGBA(0.04f, 0.05f, 0.08f, 0.5f), IGraphics::CORNER_ALL, 12.0f);
+	pScrollRegion->AddRect(Container);
+	Container.Draw(gs_KinetixPanelBorder, IGraphics::CORNER_ALL, 13.0f);
+	CUIRect ContainerBg = Container;
+	ContainerBg.Margin(1.5f, &ContainerBg);
+	ContainerBg.Draw(gs_KinetixPanelBg, IGraphics::CORNER_ALL, 12.0f);
 
 	CUIRect Header = Container;
 	Header.Margin(ContainerPad, &Header);
@@ -1875,7 +1919,7 @@ void CMenus::RenderSettingsSh1zooo(CUIRect MainView)
 				CUIRect Row;
 				Body.HSplitTop(RowHeight, &Row, &Body);
 				Body.HSplitTop(RowSpacing, nullptr, &Body);
-				const bool RowVisible = s_ScrollRegion.AddRect(Row);
+				const bool RowVisible = pScrollRegion->AddRect(Row);
 
 				// reserve the expandable tag button panel below the selected
 				// player (always, even when the row is clipped, so the scroll
@@ -1886,7 +1930,7 @@ void CMenus::RenderSettingsSh1zooo(CUIRect MainView)
 					CUIRect Reserved;
 					Body.HSplitTop(PanelCurrentH, &Reserved, &Body);
 					Body.HSplitTop(RowSpacing * ReserveEase, nullptr, &Body);
-					s_ScrollRegion.AddRect(Reserved);
+					pScrollRegion->AddRect(Reserved);
 				}
 
 				if(!RowVisible)
@@ -2054,6 +2098,33 @@ void CMenus::RenderSettingsSh1zooo(CUIRect MainView)
 
 		Ui()->ClipEnable(&ScrollClipRect);
 	}
+}
+
+void CMenus::RenderKinetixAutoFinishSection(CUIRect &MainView, CScrollRegion *pScrollRegion)
+{
+	// Draws a Font Awesome (vector) icon label.
+	const auto IconLabel = [&](const CUIRect *pRect, const char *pIcon, float Size, int Align, const ColorRGBA &Color) {
+		TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
+		const unsigned OldFlags = TextRender()->GetRenderFlags();
+		TextRender()->SetRenderFlags(OldFlags | TEXT_RENDER_FLAG_ONLY_ADVANCE_WIDTH | TEXT_RENDER_FLAG_NO_X_BEARING | TEXT_RENDER_FLAG_NO_Y_BEARING | TEXT_RENDER_FLAG_NO_PIXEL_ALIGNMENT | TEXT_RENDER_FLAG_NO_OVERSIZE);
+		TextRender()->TextColor(Color);
+		Ui()->DoLabel(pRect, pIcon, Size, Align);
+		TextRender()->SetRenderFlags(OldFlags);
+		TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
+	};
+
+	// ---- section header (Kinetix style: purple bar) --------------------------
+	{
+		CUIRect Head;
+		MainView.HSplitTop(26.0f, &Head, &MainView);
+		MainView.HSplitTop(10.0f, nullptr, &MainView);
+		pScrollRegion->AddRect(Head);
+		Head.Draw(gs_KinetixAccent, IGraphics::CORNER_ALL, 7.0f);
+		Head.VMargin(10.0f, &Head);
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 0.95f);
+		Ui()->DoLabel(&Head, "AUTO-FINISH", 12.0f, TEXTALIGN_ML);
+		TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+	}
 
 	// ---- auto-finish section -----------------------------------------------
 	MainView.HSplitTop(24.0f, nullptr, &MainView);
@@ -2068,7 +2139,7 @@ void CMenus::RenderSettingsSh1zooo(CUIRect MainView)
 		static CButtonContainer s_AfAlphaId;
 		static CButtonContainer s_AfZoomId;
 
-		const float AfRowCheckbox = 20.0f;
+		const float AfRowCheckbox = 28.0f;
 		const float AfRowSlider = 38.0f;
 		const float AfHintH = 30.0f;
 		const float AfHeaderH = 16.0f;
@@ -2079,8 +2150,11 @@ void CMenus::RenderSettingsSh1zooo(CUIRect MainView)
 			3.0f * AfRowSlider + 8.0f + AfHintH + 12.0f;
 		CUIRect AfContainer;
 		MainView.HSplitTop(AfInner, &AfContainer, &MainView);
-		s_ScrollRegion.AddRect(AfContainer);
-		AfContainer.Draw(ColorRGBA(0.04f, 0.05f, 0.08f, 0.5f), IGraphics::CORNER_ALL, 12.0f);
+		pScrollRegion->AddRect(AfContainer);
+		AfContainer.Draw(gs_KinetixPanelBorder, IGraphics::CORNER_ALL, 13.0f);
+		CUIRect AfContainerBg = AfContainer;
+		AfContainerBg.Margin(1.5f, &AfContainerBg);
+		AfContainerBg.Draw(gs_KinetixPanelBg, IGraphics::CORNER_ALL, 12.0f);
 		AfContainer.Margin(12.0f, &AfContainer);
 
 		// header
@@ -2091,7 +2165,7 @@ void CMenus::RenderSettingsSh1zooo(CUIRect MainView)
 			Head.VSplitLeft(20.0f, &SectionIcon, &Head);
 			IconLabel(&SectionIcon, FontIcon::FLAG_CHECKERED, 12.0f, TEXTALIGN_ML, ColorRGBA(0.48f, 0.50f, 0.55f, 1.0f));
 			TextRender()->TextColor(0.48f, 0.50f, 0.55f, 1.0f);
-			Ui()->DoLabel(&Head, "AUTO-FINISH", 11.0f, TEXTALIGN_ML);
+			Ui()->DoLabel(&Head, "BOT SETTINGS", 11.0f, TEXTALIGN_ML);
 			TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
 			AfContainer.HSplitTop(6.0f, nullptr, &AfContainer);
 		}
@@ -2099,8 +2173,29 @@ void CMenus::RenderSettingsSh1zooo(CUIRect MainView)
 		const auto AfCheckbox = [&](const void *pId, const char *pLabel, int *pValue) {
 			CUIRect Row;
 			AfContainer.HSplitTop(AfRowCheckbox, &Row, &AfContainer);
-			if(DoButton_CheckBox(pId, pLabel, *pValue != 0, &Row))
+			AfContainer.HSplitTop(2.0f, nullptr, &AfContainer);
+			const bool Clicked = Ui()->DoButtonLogic(pId, 0, &Row, BUTTONFLAG_LEFT) != 0;
+			const bool Hot = Ui()->HotItem() == pId;
+			if(Clicked)
 				*pValue = *pValue != 0 ? 0 : 1;
+			Row.Draw(ColorRGBA(1.0f, 1.0f, 1.0f, Hot ? 0.05f : 0.02f), IGraphics::CORNER_ALL, 8.0f);
+			CUIRect Box, Label;
+			Row.VSplitLeft(26.0f, &Box, &Label);
+			Label.VSplitLeft(8.0f, nullptr, &Label);
+			Box.Margin(3.0f, &Box);
+			Box.Draw(gs_KinetixPanelBorder, IGraphics::CORNER_ALL, 6.0f);
+			CUIRect BoxIn;
+			Box.Margin(1.5f, &BoxIn);
+			BoxIn.Draw(*pValue ? gs_KinetixAccent : gs_KinetixCheckBg, IGraphics::CORNER_ALL, 5.0f);
+			if(*pValue)
+			{
+				TextRender()->TextColor(1.0f, 1.0f, 1.0f, 0.95f);
+				Ui()->DoLabel(&BoxIn, "\xE2\x9C\x93", 11.0f, TEXTALIGN_MC);
+				TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+			}
+			TextRender()->TextColor(gs_KinetixRowText);
+			Ui()->DoLabel(&Label, pLabel, 12.0f, TEXTALIGN_ML);
+			TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
 		};
 		AfCheckbox(&s_AfEnableId, Localize("Auto-complete the map (finds and walks the shortest route)"), &g_Config.m_ClAutoFinish);
 		AfCheckbox(&s_AfShowPathId, Localize("Show the planned route as a strip"), &g_Config.m_ClAutoFinishShowPath);
@@ -2178,8 +2273,6 @@ void CMenus::RenderSettingsSh1zooo(CUIRect MainView)
 			TextRender()->TextColor(TextRender()->DefaultTextColor());
 		}
 	}
-
-	s_ScrollRegion.End();
 }
 
 void CMenus::RenderSettings(CUIRect MainView)
@@ -2211,9 +2304,12 @@ void CMenus::RenderSettings(CUIRect MainView)
 		Localize("Sound"),
 		Localize("DDNet"),
 		Localize("Assets"),
-		Localize("Touch"),
-		"sh1zooo client"};
+		"Kinetix client"};
 	static CButtonContainer s_aTabButtons[SETTINGS_LENGTH];
+	// Older builds saved the page index of the removed "Touch" and "sh1zooo
+	// client" tabs; map any stale index to the merged Kinetix client tab.
+	if(g_Config.m_UiSettingsPage < 0 || g_Config.m_UiSettingsPage >= SETTINGS_LENGTH)
+		g_Config.m_UiSettingsPage = SETTINGS_KINETIX;
 
 	for(int i = 0; i < SETTINGS_LENGTH; i++)
 	{
@@ -2276,15 +2372,10 @@ void CMenus::RenderSettings(CUIRect MainView)
 		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_ASSETS);
 		RenderSettingsCustom(MainView);
 	}
-	else if(g_Config.m_UiSettingsPage == SETTINGS_TOUCH)
+	else if(g_Config.m_UiSettingsPage == SETTINGS_KINETIX)
 	{
 		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_ASSETS);
-		RenderSettingsTouch(MainView);
-	}
-	else if(g_Config.m_UiSettingsPage == SETTINGS_SH1ZOOO)
-	{
-		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_ASSETS);
-		RenderSettingsSh1zooo(MainView);
+		RenderSettingsKinetix(MainView);
 	}
 	else
 	{
