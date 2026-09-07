@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   repair:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -43,10 +44,9 @@ jobs:
                 return false;
         }
 
-        // Server reconciliation can move the predicted character a few pixels
-        // away from the offline trajectory. Do not restart A* for that. Re-anchor
-        // playback to a nearby FUTURE trajectory point, so the old input stream
-        // is not blindly continued from a stale tick.
+        // Reconciliation can move the predicted character slightly away from
+        // the offline trajectory. Do not restart A* for small corrections;
+        // instead re-anchor playback to a nearby future trajectory point.
         CGameClient *pGame = GameClient();
         if(pGame && m_PfVPath.size() > 1)
         {
@@ -63,7 +63,6 @@ jobs:
                         {
                                 const vec2 actualPos = pChar->GetCore().m_Pos;
                                 const float error = distance(actualPos, m_PfVPath[expected]);
-
                                 if(error > TOLERANCE)
                                 {
                                         size_t best = expected;
@@ -71,7 +70,6 @@ jobs:
                                         size_t end = expected + LOOK_AHEAD;
                                         if(end >= m_PfVPath.size())
                                                 end = m_PfVPath.size() - 1;
-
                                         for(size_t i = expected + 1; i <= end; ++i)
                                         {
                                                 const float d = distance(actualPos, m_PfVPath[i]);
@@ -81,7 +79,6 @@ jobs:
                                                         best = i;
                                                 }
                                         }
-
                                         if(bestDist <= RESYNC_DISTANCE && best > expected)
                                         {
                                                 const size_t newIdx = best - 1;
@@ -129,25 +126,13 @@ jobs:
               raise SystemExit("ApplyPfGoInput marker not found; refusing to modify the file")
           path.write_text(new_text, encoding="utf-8")
 
-      - name: Commit Pathfinder fix
+      - name: Commit fix and remove one-shot workflow
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git diff --check
           git add src/game/client/components/kinetix/pathfinder/pathfinder_tab.cpp
-          git diff --cached --quiet && { echo "No Pathfinder changes"; exit 0; }
+          git rm .github/workflows/pathfinder-correction.yml
           git commit -m "pathfinder: resync playback after server correction"
           git push origin HEAD:ddnet-ios
-
-      - name: Remove repair workflow
-        if: success()
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/pathfinder-correction.yml
-          git commit -m "chore: remove one-shot pathfinder repair workflow"
-          git push origin HEAD:ddnet-ios
-
-# trigger repair
