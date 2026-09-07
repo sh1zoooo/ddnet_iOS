@@ -150,4 +150,4 @@ jobs:
           git commit -m "chore: remove one-shot pathfinder repair workflow"
           git push origin HEAD:ddnet-ios
 
-# one-shot trigger
+# trigger repair
