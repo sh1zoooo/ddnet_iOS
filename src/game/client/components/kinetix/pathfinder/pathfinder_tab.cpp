@@ -138,26 +138,66 @@ void CBotNet::PfResetRun()
 // other ticks, aim is left untouched so Fake Aim can coexist with PfGo.
 bool CBotNet::ApplyPfGoInput(CNetObj_PlayerInput *pInput)
 {
-        // Reset before early return — otherwise stopping PfGo leaves the flag
-        // true and permanently blocks Fake Aim generation.
         m_PfGoAimedThisTick = false;
         if(!m_PfGoActive || !pInput)
                 return false;
         if(m_PfGoIdx >= m_PfFullInputs.size())
         {
-                // Playback finished.
                 m_PfGoActive = false;
-                dbg_msg("pathfinder", "kx_pf_play: playback finished (%d ticks)", (int)m_PfFullInputs.size());
                 return false;
         }
+
+        // Server reconciliation can move the predicted character away
+        // from the offline trajectory. Keep the existing plan and
+        // resynchronize playback to a nearby future point instead of
+        // restarting A* on every correction.
+        CGameClient *pGame = GameClient();
+        if(pGame && m_PfVPath.size() > 1)
+        {
+                CCharacter *pChar = pGame->m_PredictedWorld.GetCharacterById(pGame->m_Snap.m_LocalClientId);
+                if(pChar)
+                {
+                        const float TOLERANCE = 18.0f;
+                        const float RESYNC_DISTANCE = 40.0f;
+                        const float HARD_STOP_DISTANCE = 96.0f;
+                        const size_t LOOK_AHEAD = 24;
+                        size_t expected = m_PfGoIdx + 1;
+                        if(expected < m_PfVPath.size())
+                        {
+                                const vec2 actualPos = pChar->GetCore().m_Pos;
+                                const float error = distance(actualPos, m_PfVPath[expected]);
+                                if(error > TOLERANCE)
+                                {
+                                        size_t best = expected;
+                                        float bestDist = error;
+                                        size_t end = expected + LOOK_AHEAD;
+                                        if(end >= m_PfVPath.size())
+                                                end = m_PfVPath.size() - 1;
+                                        for(size_t i = expected + 1; i <= end; ++i)
+                                        {
+                                                const float d = distance(actualPos, m_PfVPath[i]);
+                                                if(d < bestDist)
+                                                {
+                                                        bestDist = d;
+                                                        best = i;
+                                                }
+                                        }
+                                        if(best > expected && bestDist <= RESYNC_DISTANCE)
+                                                m_PfGoIdx = best - 1;
+                                        else if(error >= HARD_STOP_DISTANCE)
+                                        {
+                                                m_PfGoActive = false;
+                                                return false;
+                                        }
+                                }
+                        }
+                }
+        }
+
         const CNetObj_PlayerInput &In = m_PfFullInputs[m_PfGoIdx];
-        // Apply direction, jump, hook — full input except fire/weapon (let player keep their own).
         pInput->m_Direction = In.m_Direction;
         pInput->m_Jump = In.m_Jump;
         pInput->m_Hook = In.m_Hook;
-        // v1.56.204: Only apply aim on hook rising edge (new hook), like Fake Aim's hookPress.
-        // This prevents PfGo from overwriting aim every tick, allowing Fake Aim to work.
-        // v1.56.207: Store aim offset so Robot Aim can remember the PfGo target.
         if(In.m_Hook != 0 && m_PfGoPrevHook == 0)
         {
                 pInput->m_TargetX = In.m_TargetX;
