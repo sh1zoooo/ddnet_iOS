@@ -1,0 +1,151 @@
+name: Pathfinder correction repair
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ddnet-ios]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ddnet-ios
+          fetch-depth: 0
+
+      - name: Patch Pathfinder playback
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path("src/game/client/components/kinetix/pathfinder/pathfinder_tab.cpp")
+          text = path.read_text(encoding="utf-8")
+
+          pattern = re.compile(
+              r'bool CBotNet::ApplyPfGoInput\(CNetObj_PlayerInput \*pInput\)\n\{.*?\n\}\n\n// TODO\(bug1-resolved\):',
+              re.S,
+          )
+          replacement = r'''bool CBotNet::ApplyPfGoInput(CNetObj_PlayerInput *pInput)
+{
+        m_PfGoAimedThisTick = false;
+        if(!m_PfGoActive || !pInput)
+                return false;
+        if(m_PfGoIdx >= m_PfFullInputs.size())
+        {
+                m_PfGoActive = false;
+                dbg_msg("pathfinder", "kx_pf_play: playback finished (%d ticks)", (int)m_PfFullInputs.size());
+                return false;
+        }
+
+        // Server reconciliation can move the predicted character a few pixels
+        // away from the offline trajectory. Do not restart A* for that. Re-anchor
+        // playback to a nearby FUTURE trajectory point, so the old input stream
+        // is not blindly continued from a stale tick.
+        CGameClient *pGame = GameClient();
+        if(pGame && m_PfVPath.size() > 1)
+        {
+                CCharacter *pChar = pGame->m_PredictedWorld.GetCharacterById(pGame->m_Snap.m_LocalClientId);
+                if(pChar)
+                {
+                        const float TOLERANCE = 18.0f;
+                        const float RESYNC_DISTANCE = 40.0f;
+                        const float HARD_STOP_DISTANCE = 96.0f;
+                        const size_t LOOK_AHEAD = 24;
+
+                        size_t expected = m_PfGoIdx + 1;
+                        if(expected < m_PfVPath.size())
+                        {
+                                const vec2 actualPos = pChar->GetCore().m_Pos;
+                                const float error = distance(actualPos, m_PfVPath[expected]);
+
+                                if(error > TOLERANCE)
+                                {
+                                        size_t best = expected;
+                                        float bestDist = error;
+                                        size_t end = expected + LOOK_AHEAD;
+                                        if(end >= m_PfVPath.size())
+                                                end = m_PfVPath.size() - 1;
+
+                                        for(size_t i = expected + 1; i <= end; ++i)
+                                        {
+                                                const float d = distance(actualPos, m_PfVPath[i]);
+                                                if(d < bestDist)
+                                                {
+                                                        bestDist = d;
+                                                        best = i;
+                                                }
+                                        }
+
+                                        if(bestDist <= RESYNC_DISTANCE && best > expected)
+                                        {
+                                                const size_t newIdx = best - 1;
+                                                dbg_msg("pathfinder", "kx_pf_play: resync tick %zu -> %zu (error %.1f -> %.1f)",
+                                                        m_PfGoIdx, newIdx, error, bestDist);
+                                                m_PfGoIdx = newIdx;
+                                        }
+                                        else if(error >= HARD_STOP_DISTANCE)
+                                        {
+                                                dbg_msg("pathfinder", "kx_pf_play: stopping after large server correction (error %.1f)", error);
+                                                m_PfGoActive = false;
+                                                return false;
+                                        }
+                                }
+                        }
+                }
+        }
+
+        if(m_PfGoIdx >= m_PfFullInputs.size())
+        {
+                m_PfGoActive = false;
+                return false;
+        }
+
+        const CNetObj_PlayerInput &In = m_PfFullInputs[m_PfGoIdx];
+        pInput->m_Direction = In.m_Direction;
+        pInput->m_Jump = In.m_Jump;
+        pInput->m_Hook = In.m_Hook;
+        if(In.m_Hook != 0 && m_PfGoPrevHook == 0)
+        {
+                pInput->m_TargetX = In.m_TargetX;
+                pInput->m_TargetY = In.m_TargetY;
+                m_PfGoAimOffset = vec2((float)In.m_TargetX, (float)In.m_TargetY);
+                m_PfGoAimedThisTick = true;
+        }
+        m_PfGoPrevHook = In.m_Hook;
+        m_PfGoIdx++;
+        return true;
+}
+
+// TODO(bug1-resolved):'''
+
+          new_text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit("ApplyPfGoInput marker not found; refusing to modify the file")
+          path.write_text(new_text, encoding="utf-8")
+
+      - name: Commit Pathfinder fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --check
+          git add src/game/client/components/kinetix/pathfinder/pathfinder_tab.cpp
+          git diff --cached --quiet && { echo "No Pathfinder changes"; exit 0; }
+          git commit -m "pathfinder: resync playback after server correction"
+          git push origin HEAD:ddnet-ios
+
+      - name: Remove repair workflow
+        if: success()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pathfinder-correction.yml
+          git commit -m "chore: remove one-shot pathfinder repair workflow"
+          git push origin HEAD:ddnet-ios
