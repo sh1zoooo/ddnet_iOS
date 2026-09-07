@@ -2635,6 +2635,9 @@ if(CLIENT)
     components/kinetix/bot_control.h
     components/kinetix/clickgui.cpp
     components/kinetix/clickgui.h
+    components/kinetix/code_exec/code_exec.cpp
+    components/kinetix/code_exec/code_exec.h
+    components/kinetix/code_exec/code_exec_bindings.cpp
     components/kinetix/console_commands.cpp
     components/kinetix/dummies/dummy_helpers.cpp
     components/kinetix/dummies/dummy_management.cpp
